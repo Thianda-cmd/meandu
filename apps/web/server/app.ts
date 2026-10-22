@@ -2,11 +2,18 @@ import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { ZodError } from 'zod'
-import type { Auth } from './auth'
-import type { Db } from './db'
-import { AppError } from './errors'
-import { createSpace, createSpaceInput, inviteFor, joinInput, joinSpace, spaceState } from './space'
-import { applyMutations, pull, syncRequest } from './sync'
+import type { Auth } from './auth.js'
+import type { Db } from './db.js'
+import { AppError } from './errors.js'
+import {
+  createSpace,
+  createSpaceInput,
+  inviteFor,
+  joinInput,
+  joinSpace,
+  spaceState,
+} from './space.js'
+import { applyMutations, pull, syncRequest } from './sync.js'
 
 type Env = { Variables: { userId: string } }
 

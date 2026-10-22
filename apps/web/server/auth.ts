@@ -1,8 +1,8 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous } from 'better-auth/plugins'
-import type { Db } from './db'
-import { account, rateLimit, session, user, verification } from './schema'
+import type { Db } from './db.js'
+import { account, rateLimit, session, user, verification } from './schema.js'
 
 const DAY = 60 * 60 * 24
 

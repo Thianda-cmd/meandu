@@ -1,9 +1,9 @@
 import type { Mutation, RemoteRecord, SyncResponse } from '@meandu/core'
 import { and, asc, eq, gt, lte, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import type { Db } from './db'
-import { AppError } from './errors'
-import { records, spaces } from './schema'
+import type { Db } from './db.js'
+import { AppError } from './errors.js'
+import { records, spaces } from './schema.js'
 
 const KINDS = ['event', 'list', 'item', 'memory', 'person', 'settings'] as const
 /** Largest JSON document a single record may hold. */

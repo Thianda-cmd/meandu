@@ -3,9 +3,9 @@ import { PGlite } from '@electric-sql/pglite'
 import { serve } from '@hono/node-server'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
-import { createApp } from '../server/app'
-import { createAuth } from '../server/auth'
-import * as schema from '../server/schema'
+import { createApp } from '../server/app.js'
+import { createAuth } from '../server/auth.js'
+import * as schema from '../server/schema.js'
 
 const client = new PGlite(process.env.PGLITE_DIR ?? '.pglite')
 const db = drizzle({ client, schema })

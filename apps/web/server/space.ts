@@ -1,10 +1,10 @@
 import type { InviteInfo, SpaceState } from '@meandu/core'
 import { and, asc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import type { Db } from './db'
-import { AppError } from './errors'
-import { invites, members, rateLimit, records, spaces } from './schema'
-import { applyMutations, nextVersion, settingsId } from './sync'
+import type { Db } from './db.js'
+import { AppError } from './errors.js'
+import { invites, members, rateLimit, records, spaces } from './schema.js'
+import { applyMutations, nextVersion, settingsId } from './sync.js'
 
 const TONES = ['coral', 'sage', 'honey', 'bay', 'berry'] as const
 const INVITE_DAYS = 7
