@@ -189,4 +189,27 @@ describe('api', () => {
     const seen = await mine.sync(0)
     expect(seen.records.find((r) => r.id === 'solo')?.data?.title).toBe('Dentist')
   })
+
+  it('sends everything again to a phone that just moved to another space', async () => {
+    const mine = new Device()
+    const yours = new Device()
+    await mine.signIn()
+    await yours.signIn()
+    await mine.request('/space', { name: 'A', tone: 'coral' })
+    await mine.sync(0, [event('ours', { title: 'Dinner' })])
+    const solo = await yours.request('/space', { name: 'B', tone: 'sage' })
+    const before = await yours.sync(0)
+
+    const { json } = await mine.request('/space/invite', {})
+    await yours.request('/space/join', { code: json.code, name: 'B', tone: 'sage' })
+
+    // The phone still thinks it's in its old space, at a version past the new space's start.
+    const res = await yours.request('/sync', {
+      since: before.version + 100,
+      spaceId: solo.json.spaceId,
+      mutations: [],
+    })
+    expect(res.json.spaceId).not.toBe(solo.json.spaceId)
+    expect(res.json.records.map((r: RemoteRecord) => r.id)).toContain('ours')
+  })
 })

@@ -13,6 +13,8 @@ export interface Mutation {
 export interface SyncRequest {
   /** The last version this device has seen; 0 for everything. */
   since: number
+  /** The space `since` belongs to. After moving to another space the server starts from 0. */
+  spaceId?: string | null
   mutations: Mutation[]
 }
 

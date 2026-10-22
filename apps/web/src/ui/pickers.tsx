@@ -27,37 +27,46 @@ function openPicker(input: HTMLInputElement) {
   }
 }
 
-export function DatePicker({
-  label,
-  value,
-  onChange,
-  min,
-}: {
+interface DateInputProps {
   label: string
-  value: string
+  /** ISO date, or `null` when nothing is picked yet. */
+  value: string | null
   onChange: (value: string) => void
   min?: string
-}) {
-  const { locale } = useLocale()
-  const date = Temporal.PlainDate.from(value)
-  const text = date.toLocaleString(locale, {
-    day: 'numeric',
-    month: 'short',
-    ...(date.year === todayDate().year ? {} : { year: 'numeric' }),
-  })
+  max?: string
+}
+
+/** The invisible native date input on its own, for laying over any tappable area. */
+export function NativeDateInput({ label, value, onChange, min, max }: DateInputProps) {
   return (
-    <PickerPill text={text}>
-      <input
-        type="date"
-        aria-label={label}
-        value={value}
-        min={min}
-        onClick={(e) => openPicker(e.currentTarget)}
-        onChange={(e) => {
-          if (e.target.value) onChange(e.target.value)
-        }}
-        className={overlay}
-      />
+    <input
+      type="date"
+      aria-label={label}
+      value={value ?? ''}
+      min={min}
+      max={max}
+      onClick={(e) => openPicker(e.currentTarget)}
+      onChange={(e) => {
+        if (e.target.value) onChange(e.target.value)
+      }}
+      className={overlay}
+    />
+  )
+}
+
+export function DatePicker({ placeholder, ...props }: DateInputProps & { placeholder?: string }) {
+  const { locale } = useLocale()
+  const date = props.value ? Temporal.PlainDate.from(props.value) : null
+  const text = date
+    ? date.toLocaleString(locale, {
+        day: 'numeric',
+        month: 'short',
+        ...(date.year === todayDate().year ? {} : { year: 'numeric' }),
+      })
+    : (placeholder ?? '—')
+  return (
+    <PickerPill text={<span className={date ? undefined : 'text-ink-3'}>{text}</span>}>
+      <NativeDateInput {...props} />
     </PickerPill>
   )
 }

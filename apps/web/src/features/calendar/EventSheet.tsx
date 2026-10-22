@@ -5,7 +5,7 @@ import { useT } from '../../i18n'
 import { cx } from '../../lib/cx'
 import { todayDate, zone } from '../../lib/time'
 import { haptics } from '../../platform'
-import { useData } from '../../state/data'
+import { useData, useMe, usePartner } from '../../state/data'
 import { useCalendarUi, useUi } from '../../state/ui'
 import { Avatar, CoupleAvatars } from '../../ui/Avatar'
 import { Group, Row, Segmented, Toggle } from '../../ui/controls'
@@ -150,8 +150,8 @@ export function EventSheet({
   countdown?: boolean
 }) {
   const t = useT()
-  const me = useData((s) => s.me)
-  const partner = useData((s) => s.partner)
+  const me = useMe()
+  const partner = usePartner()
   const existing = useData((s) => s.events.find((e) => e.id === eventId))
   const close = useUi((s) => s.closeSheet)
   const [draft, setDraft] = useState<Draft>(() =>
@@ -235,15 +235,20 @@ export function EventSheet({
                   </>
                 ),
               },
-              {
-                value: partner.id,
-                label: (
-                  <>
-                    <Avatar person={partner} size={20} />
-                    {partner.name}
-                  </>
-                ),
-              },
+              // Until your person joins, plans are for you or for both of you.
+              ...(partner
+                ? [
+                    {
+                      value: partner.id,
+                      label: (
+                        <>
+                          <Avatar person={partner} size={20} />
+                          {partner.name}
+                        </>
+                      ),
+                    },
+                  ]
+                : []),
               {
                 value: BOTH,
                 label: (

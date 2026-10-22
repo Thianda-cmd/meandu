@@ -82,8 +82,9 @@ export function createApp({ db, auth }: { db: Db; auth: Auth }) {
     if (body.mutations.length) {
       await db.transaction((tx) => applyMutations(tx, userId, state.spaceId, body.mutations))
     }
-    // A device that comes from another space starts from scratch.
-    return c.json(await pull(db, userId, state.spaceId, body.since))
+    // A device that comes from another space (it just joined its partner) starts from scratch.
+    const since = body.spaceId && body.spaceId !== state.spaceId ? 0 : body.since
+    return c.json(await pull(db, userId, state.spaceId, since))
   })
 
   return app

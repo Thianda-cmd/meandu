@@ -2,13 +2,16 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { appleSplash } from './scripts/apple-splash'
 
 const cream = '#FFF7F2'
+const night = '#1C1418'
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    appleSplash({ logo: 'public/logo.svg', background: { light: cream, dark: night } }),
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,
@@ -48,6 +51,8 @@ export default defineConfig({
       workbox: {
         // Fonts are cached at runtime instead, so devices only download the subsets they use.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        // iOS reads the launch images once, when the app is added to the home screen.
+        globIgnores: ['splash/**'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
@@ -64,6 +69,14 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        // Libraries change far less often than the app, so they get their own long-cached file.
+        codeSplitting: { groups: [{ name: 'vendor', test: /[\\/]node_modules[\\/]/ }] },
+      },
+    },
+  },
   // In development the API runs separately (pnpm dev:api) on an embedded Postgres.
   server: { host: true, proxy: { '/api': 'http://localhost:8787' } },
   preview: { proxy: { '/api': 'http://localhost:8787' } },

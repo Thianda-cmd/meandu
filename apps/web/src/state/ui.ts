@@ -6,6 +6,8 @@ export type SheetState =
   | { type: 'memory'; eventId?: string }
   | { type: 'list' }
   | { type: 'install' }
+  | { type: 'invite' }
+  | { type: 'join'; code?: string }
 
 export interface Toast {
   id: number
@@ -18,11 +20,14 @@ interface UiState {
   toast: Toast | null
   /** Bumped to play the little heart animation. */
   hearts: number
+  /** A code from an invite link, waiting to be used. */
+  joinCode: string | null
   openSheet: (sheet: SheetState) => void
   closeSheet: () => void
   showToast: (message: string, action?: Toast['action']) => void
   hideToast: () => void
   celebrate: () => void
+  setJoinCode: (code: string | null) => void
 }
 
 let toastIds = 0
@@ -31,11 +36,13 @@ export const useUi = create<UiState>()((set) => ({
   sheet: null,
   toast: null,
   hearts: 0,
+  joinCode: null,
   openSheet: (sheet) => set({ sheet }),
   closeSheet: () => set({ sheet: null }),
   showToast: (message, action) => set({ toast: { id: ++toastIds, message, action } }),
   hideToast: () => set({ toast: null }),
   celebrate: () => set((s) => ({ hearts: s.hearts + 1 })),
+  setJoinCode: (joinCode) => set({ joinCode }),
 }))
 
 interface CalendarUiState {

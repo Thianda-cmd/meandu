@@ -1,20 +1,14 @@
-import { type CalendarEvent, type Occurrence, occurrencesBetween, Temporal } from '@meandu/core'
+import { type Occurrence, occurrencesBetween, Temporal } from '@meandu/core'
 import { LockSimple } from '@phosphor-icons/react'
 import { useMemo } from 'react'
 import { useLocale, useT } from '../../i18n'
 import { timeLabel } from '../../lib/format'
 import { zone } from '../../lib/time'
-import { type ToneName, toneStyle, useToneFor } from '../../lib/tone'
+import { toneStyle, useToneFor } from '../../lib/tone'
 import { useData } from '../../state/data'
-import type { Person } from '../../state/types'
 import { useCalendarUi } from '../../state/ui'
 import { WhoBadge } from '../../ui/Avatar'
 import { Pressable } from '../../ui/Pressable'
-
-export function toneOf(event: CalendarEvent, me: Person, partner: Person): ToneName {
-  if (event.forUserId === null) return 'lilac'
-  return event.forUserId === me.id ? me.tone : partner.tone
-}
 
 /** Occurrences between two days, optionally hiding what the calendar filters hide. */
 export function useOccurrences(
@@ -23,7 +17,7 @@ export function useOccurrences(
   { filtered = false }: { filtered?: boolean } = {},
 ): Occurrence[] {
   const events = useData((s) => s.events)
-  const meId = useData((s) => s.me.id)
+  const meId = useData((s) => s.meId)
   const hidden = useCalendarUi((s) => s.hidden)
   const fromKey = from.toString()
   const toKey = to.toString()

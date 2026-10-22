@@ -23,6 +23,18 @@
   --radius-sheet: 1.75rem;
 
   --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --animate-float: float 3.2s ease-in-out infinite;
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
 }
 
 @theme inline {
@@ -260,10 +272,38 @@
   }
 }
 
+/* Placeholder shimmer while content is on its way. */
+@utility skeleton {
+  background:
+    linear-gradient(100deg, var(--surface-2) 30%, var(--surface-3) 50%, var(--surface-2) 70%) 0 0 /
+    300% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
 @utility glass {
   background: var(--bar);
   -webkit-backdrop-filter: blur(22px) saturate(1.8);
   backdrop-filter: blur(22px) saturate(1.8);
+}
+
+/* Warm light behind the welcome screen. */
+.welcome-glow {
+  background:
+    radial-gradient(60% 38% at 12% 18%, var(--coral-soft), transparent 72%),
+    radial-gradient(55% 36% at 92% 30%, var(--sage-soft), transparent 72%),
+    radial-gradient(75% 40% at 50% 92%, var(--lilac-soft), transparent 72%), var(--canvas);
 }
 
 /* The app shrinks back while a sheet is open, like on iOS. */

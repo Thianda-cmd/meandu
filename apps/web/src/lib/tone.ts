@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
-import { useData } from '../state/data'
-import type { Tone } from '../state/types'
+import { useMe, usePartner } from '../state/data'
+import type { Person, Tone } from '../state/types'
 
 export type ToneName = Tone | 'lilac'
 
@@ -14,9 +14,12 @@ export function toneStyle(tone: ToneName): CSSProperties {
 }
 
 /** Who something is for decides its colour: mine, my person's, or ours (lilac). */
-export function useToneFor(forUserId: string | null): ToneName {
-  const me = useData((s) => s.me)
-  const partner = useData((s) => s.partner)
+export function toneFor(forUserId: string | null, me: Person, partner: Person | null): ToneName {
   if (forUserId === null) return 'lilac'
-  return forUserId === me.id ? me.tone : partner.tone
+  if (forUserId === me.id) return me.tone
+  return partner?.tone ?? 'lilac'
+}
+
+export function useToneFor(forUserId: string | null): ToneName {
+  return toneFor(forUserId, useMe(), usePartner())
 }

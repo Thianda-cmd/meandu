@@ -13,6 +13,7 @@ const PAGE = 1000
 
 export const syncRequest = z.object({
   since: z.number().int().min(0),
+  spaceId: z.string().max(64).nullish(),
   mutations: z
     .array(
       z.object({

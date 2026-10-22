@@ -8,22 +8,22 @@ export interface Person {
   tone: Tone
 }
 
+export interface List {
+  id: string
+  title: string
+  emoji: string
+  createdAt: string
+}
+
 export interface ListItem {
   id: string
+  listId: string
   text: string
   done: boolean
   /** `null` means whoever gets to it first. */
   assigneeId: string | null
   createdAt: string
   doneAt?: string
-}
-
-export interface List {
-  id: string
-  title: string
-  emoji: string
-  items: ListItem[]
-  createdAt: string
 }
 
 export type Photo =

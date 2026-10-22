@@ -13,9 +13,9 @@ import { useLocale, useT } from '../../i18n'
 import { cx } from '../../lib/cx'
 import { formatMonth, relativeDay } from '../../lib/format'
 import { useToday } from '../../lib/time'
-import type { ToneName } from '../../lib/tone'
+import { type ToneName, toneFor } from '../../lib/tone'
 import { haptics } from '../../platform'
-import { useData } from '../../state/data'
+import { useMe, usePartner } from '../../state/data'
 import { useNav } from '../../state/nav'
 import { useCalendarUi, useUi } from '../../state/ui'
 import { Avatar, CoupleAvatars } from '../../ui/Avatar'
@@ -23,7 +23,7 @@ import { Segmented } from '../../ui/controls'
 import { STACK_SPRING } from '../../ui/motion'
 import { Pressable } from '../../ui/Pressable'
 import { Screen } from '../../ui/Screen'
-import { EventRow, toneOf, useOccurrences, weekdayInitials } from './shared'
+import { EventRow, useOccurrences, weekdayInitials } from './shared'
 
 export function CalendarScreen() {
   const t = useT()
@@ -112,13 +112,21 @@ export function CalendarScreen() {
 
 function Filters() {
   const t = useT()
-  const me = useData((s) => s.me)
-  const partner = useData((s) => s.partner)
+  const me = useMe()
+  const partner = usePartner()
   const hidden = useCalendarUi((s) => s.hidden)
   const toggle = useCalendarUi((s) => s.toggle)
   const chips = [
     { key: 'me' as const, label: me.name, icon: <Avatar person={me} size={22} /> },
-    { key: 'partner' as const, label: partner.name, icon: <Avatar person={partner} size={22} /> },
+    ...(partner
+      ? [
+          {
+            key: 'partner' as const,
+            label: partner.name,
+            icon: <Avatar person={partner} size={22} />,
+          },
+        ]
+      : []),
     { key: 'us' as const, label: t.common.us, icon: <CoupleAvatars size={22} /> },
   ]
   return (
@@ -173,8 +181,8 @@ function MonthPager({
   const from = startOfWeek(months[0]?.toPlainDate({ day: 1 }) ?? today, weekStart)
   const to = from.add({ weeks: 16 })
   const occurrences = useOccurrences(from, to, { filtered: true })
-  const me = useData((s) => s.me)
-  const partner = useData((s) => s.partner)
+  const me = useMe()
+  const partner = usePartner()
   const dots = useMemo(() => {
     const map = new Map<string, Set<ToneName>>()
     for (const o of occurrences) {
@@ -182,7 +190,7 @@ function MonthPager({
       for (let i = 0; i < 31 && Temporal.PlainDate.compare(day, o.endDate) < 0; i++) {
         const key = day.toString()
         const set = map.get(key) ?? new Set<ToneName>()
-        set.add(toneOf(o.event, me, partner))
+        set.add(toneFor(o.event.forUserId, me, partner))
         map.set(key, set)
         day = day.add({ days: 1 })
       }

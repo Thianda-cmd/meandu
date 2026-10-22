@@ -51,6 +51,33 @@ export function useTypingFlag(): void {
   }, [])
 }
 
+/**
+ * Keeps `--keyboard` set to the height of the on-screen keyboard, so buttons at the bottom
+ * can ride above it. Browsers that shrink the page for the keyboard report 0.
+ */
+export function useKeyboardInset(): void {
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+    const root = document.documentElement
+    const update = () => {
+      // A pinch-zoomed page also has a smaller visual viewport; that's not a keyboard.
+      const inset =
+        viewport.scale > 1.01
+          ? 0
+          : Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      root.style.setProperty('--keyboard', `${Math.round(inset)}px`)
+    }
+    update()
+    viewport.addEventListener('resize', update)
+    viewport.addEventListener('scroll', update)
+    return () => {
+      viewport.removeEventListener('resize', update)
+      viewport.removeEventListener('scroll', update)
+    }
+  }, [])
+}
+
 /** Home-screen shortcut ("New plan") opens straight into the form. */
 export function useLaunchShortcut(): void {
   useEffect(() => {

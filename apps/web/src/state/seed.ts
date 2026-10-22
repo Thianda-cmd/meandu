@@ -6,7 +6,8 @@ import {
   uuidv7,
 } from '@meandu/core'
 import type { Lang } from '../i18n/locale'
-import type { List, Memory, Person, Photo } from './types'
+import type { Content } from './records'
+import type { List, ListItem, Memory, Person, Photo } from './types'
 
 /** Demo content so the prototype feels lived-in. Everything is relative to today. */
 
@@ -84,13 +85,8 @@ const GRADIENTS: ReadonlyArray<readonly [string, string]> = [
   ['#f9bdd5', '#d46a9a'],
 ]
 
-export interface Seed {
-  me: Person
-  partner: Person
-  togetherSince: string
-  events: CalendarEvent[]
-  lists: List[]
-  memories: Memory[]
+export interface Seed extends Content {
+  meId: string
 }
 
 export function createSeed(lang: Lang, today: Temporal.PlainDate, zone: string): Seed {
@@ -201,33 +197,35 @@ export function createSeed(lang: Lang, today: Temporal.PlainDate, zone: string):
     brunch,
   ]
 
+  const lists: List[] = []
+  const items: ListItem[] = []
   const list = (
     title: string,
     emoji: string,
     texts: readonly string[],
     done: number[] = [],
     who: (string | null)[] = [],
-  ): List => ({
-    id: uuidv7(),
-    title,
-    emoji,
-    createdAt: now,
-    items: texts.map((text, i) => ({
-      id: uuidv7(),
-      text,
-      done: done.includes(i),
-      assigneeId: who[i] ?? null,
-      createdAt: now,
-      ...(done.includes(i) ? { doneAt: now } : {}),
-    })),
-  })
+  ) => {
+    const listId = uuidv7()
+    lists.push({ id: listId, title, emoji, createdAt: now })
+    texts.forEach((text, i) => {
+      items.push({
+        id: uuidv7(),
+        listId,
+        text,
+        done: done.includes(i),
+        assigneeId: who[i] ?? null,
+        // Newest first in the app, so the first item gets the latest time.
+        createdAt: new Date(Date.now() - i * 60_000).toISOString(),
+        ...(done.includes(i) ? { doneAt: now } : {}),
+      })
+    })
+  }
 
-  const lists: List[] = [
-    list(w.groceries, '🛒', w.items.groceries, [4, 5]),
-    list(w.home, '🏠', w.items.home, [2], [me.id, partner.id]),
-    list(w.ideas, '💡', w.items.ideas),
-    list(w.bucket, '🌍', w.items.bucket),
-  ]
+  list(w.groceries, '🛒', w.items.groceries, [4, 5])
+  list(w.home, '🏠', w.items.home, [2], [me.id, partner.id])
+  list(w.ideas, '💡', w.items.ideas)
+  list(w.bucket, '🌍', w.items.bucket)
 
   let gradient = 0
   const photos = (count: number): Photo[] =>
@@ -264,5 +262,13 @@ export function createSeed(lang: Lang, today: Temporal.PlainDate, zone: string):
     memory(togetherSince.add({ days: 512 }), w.movingIn, '📦', 1, { note: w.movingInNote }),
   ]
 
-  return { me, partner, togetherSince: togetherSince.toString(), events, lists, memories }
+  return {
+    meId: me.id,
+    people: [me, partner],
+    togetherSince: togetherSince.toString(),
+    events,
+    lists,
+    items,
+    memories,
+  }
 }

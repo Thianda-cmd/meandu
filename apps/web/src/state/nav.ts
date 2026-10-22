@@ -38,6 +38,8 @@ interface NavState {
   selectTab: (tab: TabId) => void
   /** Switch to a tab and open a screen there. */
   open: (tab: TabId, route: Route) => void
+  /** Back to Today with every tab on its first screen. */
+  reset: () => void
 }
 
 export const useNav = create<NavState>()((set, get) => ({
@@ -68,6 +70,8 @@ export const useNav = create<NavState>()((set, get) => ({
 
   open: (tab, route) =>
     set((s) => ({ tab, stacks: { ...s.stacks, [tab]: [...s.stacks[tab], entry(route)] } })),
+
+  reset: () => set({ tab: 'today', stacks: rootStacks() }),
 }))
 
 export function currentRoute(): Route {

@@ -21,7 +21,7 @@ import { formatDay, formatTime } from '../../lib/format'
 import { useToday, zone } from '../../lib/time'
 import { toneStyle, useToneFor } from '../../lib/tone'
 import { haptics } from '../../platform'
-import { useData } from '../../state/data'
+import { useData, useMe, usePartner } from '../../state/data'
 import { useNav } from '../../state/nav'
 import { useUi } from '../../state/ui'
 import { WhoBadge } from '../../ui/Avatar'
@@ -56,8 +56,8 @@ export function EventScreen({ id, date }: { id: string; date?: string }) {
   const { locale } = useLocale()
   const today = useToday()
   const found = useData((s) => s.events.find((e) => e.id === id))
-  const me = useData((s) => s.me)
-  const partner = useData((s) => s.partner)
+  const me = useMe()
+  const partner = usePartner()
   const openSheet = useUi((s) => s.openSheet)
   // Keep showing the event while the screen slides away after deleting it.
   const last = useRef(found)
@@ -75,7 +75,11 @@ export function EventScreen({ id, date }: { id: string; date?: string }) {
       ? o.startDate.year - Temporal.PlainDate.from(event.startDate).year
       : 0
   const who =
-    event.forUserId === null ? t.common.us : event.forUserId === me.id ? me.name : partner.name
+    event.forUserId === null
+      ? t.common.us
+      : event.forUserId === me.id
+        ? me.name
+        : (partner?.name ?? '')
 
   const remove = () => {
     haptics.warn()

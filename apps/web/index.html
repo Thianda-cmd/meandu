@@ -19,8 +19,54 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
     <script src="/boot.js"></script>
     <title>meandu</title>
+    <style>
+      /* The launch screen: drawn before any script runs, and the same as the iOS launch image. */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: grid;
+        place-items: center;
+        background: #fff7f2;
+        transition: opacity 260ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      #splash svg {
+        width: 28vmin;
+        height: 28vmin;
+        /* Only if loading takes a while: a slow breath, so it doesn't look stuck. */
+        animation: splash-breathe 1.8s ease-in-out 1s infinite;
+      }
+      #splash.splash-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      @keyframes splash-breathe {
+        50% {
+          transform: scale(1.06);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash svg {
+          animation: none;
+        }
+      }
+      html {
+        background: #fff7f2;
+      }
+      html[data-theme="dark"],
+      html[data-theme="dark"] #splash {
+        background: #1c1418;
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <svg viewBox="0 0 512 512" aria-hidden="true">
+        <circle cx="206" cy="256" r="128" fill="#FF7A6B" />
+        <circle cx="306" cy="256" r="128" fill="#6FB3A0" />
+        <path d="M256 138.17A128 128 0 0 1 256 373.83A128 128 0 0 1 256 138.17Z" fill="#A98BFF" />
+      </svg>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

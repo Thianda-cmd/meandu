@@ -4,6 +4,8 @@ import { Sheet } from '../ui/Sheet'
 import { EventSheet } from './calendar/EventSheet'
 import { CreateSheet } from './create/CreateSheet'
 import { InstallSheet } from './install/InstallSheet'
+import { InviteSheet } from './invite/InviteSheet'
+import { JoinSheet } from './invite/JoinSheet'
 import { ListSheet } from './lists/ListSheet'
 import { MemorySheet } from './memories/MemorySheet'
 
@@ -31,6 +33,12 @@ export function SheetHost() {
       </Sheet>
       <Sheet open={sheet?.type === 'install'} onClose={close} label={t.install.title}>
         <InstallSheet />
+      </Sheet>
+      <Sheet open={sheet?.type === 'invite'} onClose={close} label={t.invite.title}>
+        <InviteSheet />
+      </Sheet>
+      <Sheet open={sheet?.type === 'join'} onClose={close} label={t.onboarding.codeTitle}>
+        {sheet?.type === 'join' && <JoinSheet code={sheet.code} />}
       </Sheet>
     </>
   )

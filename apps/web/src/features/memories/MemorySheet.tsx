@@ -16,7 +16,7 @@ export function MemorySheet({ eventId }: { eventId?: string }) {
   const t = useT()
   const close = useUi((s) => s.closeSheet)
   const event = useData((s) => s.events.find((e) => e.id === eventId))
-  const meId = useData((s) => s.me.id)
+  const meId = useData((s) => s.meId)
   const [files, setFiles] = useState<File[]>([])
   const [title, setTitle] = useState(event?.title ?? '')
   const [date, setDate] = useState(() => {

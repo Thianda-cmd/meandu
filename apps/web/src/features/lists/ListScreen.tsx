@@ -1,11 +1,11 @@
 import { CaretDown, Check, Plus } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type FormEvent, useRef, useState } from 'react'
+import { type FormEvent, useMemo, useRef, useState } from 'react'
 import { useT } from '../../i18n'
 import { cx } from '../../lib/cx'
 import { toneStyle } from '../../lib/tone'
 import { haptics } from '../../platform'
-import { useData } from '../../state/data'
+import { useData, useMe, usePartner } from '../../state/data'
 import type { ListItem } from '../../state/types'
 import { useUi } from '../../state/ui'
 import { Avatar } from '../../ui/Avatar'
@@ -13,18 +13,29 @@ import { SNAPPY } from '../../ui/motion'
 import { Pressable } from '../../ui/Pressable'
 import { Screen } from '../../ui/Screen'
 import { SwipeRow } from '../../ui/SwipeRow'
+import { EmptyState } from '../../ui/states'
 
 export function ListScreen({ id }: { id: string }) {
   const t = useT()
   const list = useData((s) => s.lists.find((l) => l.id === id))
+  const items = useData((s) => s.items)
   const [showDone, setShowDone] = useState(false)
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
 
-  if (!list) return <Screen title="">{null}</Screen>
+  // Newest first; done ones by when they were ticked off.
+  const { open, done } = useMemo(() => {
+    const mine = items.filter((i) => i.listId === id)
+    const newest = (a: ListItem, b: ListItem) => b.createdAt.localeCompare(a.createdAt)
+    return {
+      open: mine.filter((i) => !i.done).sort(newest),
+      done: mine
+        .filter((i) => i.done)
+        .sort((a, b) => (b.doneAt ?? b.createdAt).localeCompare(a.doneAt ?? a.createdAt)),
+    }
+  }, [items, id])
 
-  const open = list.items.filter((i) => !i.done)
-  const done = list.items.filter((i) => i.done)
+  if (!list) return <Screen title="">{null}</Screen>
 
   const add = (event: FormEvent) => {
     event.preventDefault()
@@ -65,17 +76,20 @@ export function ListScreen({ id }: { id: string }) {
               exit={{ opacity: 0, height: 0 }}
               transition={SNAPPY}
             >
-              <Item listId={list.id} item={item} />
+              <Item item={item} />
             </motion.li>
           ))}
         </AnimatePresence>
       </ul>
 
-      {open.length === 0 && (
-        <p className="px-5 py-8 text-center font-display text-title font-bold text-ink-2">
-          {t.lists.allDone}
-        </p>
-      )}
+      {open.length === 0 &&
+        (done.length > 0 ? (
+          <p className="px-5 py-8 text-center font-display text-title font-bold text-ink-2">
+            {t.lists.allDone}
+          </p>
+        ) : (
+          <EmptyState emoji={list.emoji} title={t.empty.list} />
+        ))}
 
       {done.length > 0 && (
         <section className="mt-4">
@@ -101,7 +115,7 @@ export function ListScreen({ id }: { id: string }) {
               >
                 {done.map((item) => (
                   <li key={item.id}>
-                    <Item listId={list.id} item={item} />
+                    <Item item={item} />
                   </li>
                 ))}
               </motion.ul>
@@ -113,14 +127,14 @@ export function ListScreen({ id }: { id: string }) {
   )
 }
 
-function Item({ listId, item }: { listId: string; item: ListItem }) {
+function Item({ item }: { item: ListItem }) {
   const t = useT()
-  const me = useData((s) => s.me)
-  const partner = useData((s) => s.partner)
-  const assignee = item.assigneeId === me.id ? me : item.assigneeId === partner.id ? partner : null
+  const me = useMe()
+  const partner = usePartner()
+  const assignee = item.assigneeId === me.id ? me : item.assigneeId === partner?.id ? partner : null
 
   const remove = () => {
-    const undo = useData.getState().deleteItem(listId, item.id)
+    const undo = useData.getState().deleteItem(item.id)
     useUi.getState().showToast(t.common.deleted, { label: t.common.undo, run: undo })
   }
 
@@ -132,7 +146,7 @@ function Item({ listId, item }: { listId: string; item: ListItem }) {
           aria-pressed={item.done}
           haptic={item.done ? 'select' : 'success'}
           feedback="none"
-          onPress={() => useData.getState().toggleItem(listId, item.id)}
+          onPress={() => useData.getState().toggleItem(item.id)}
           style={toneStyle(assignee?.tone ?? 'sage')}
           className={cx(
             'grid size-7 shrink-0 place-items-center rounded-full border-2 transition-colors duration-200',

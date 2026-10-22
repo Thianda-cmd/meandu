@@ -8,28 +8,33 @@ import {
   previousMilestone,
   Temporal,
 } from '@meandu/core'
-import { Export, Heart, X } from '@phosphor-icons/react'
+import { CalendarPlus, CloudSlash, Export, Heart, WarningCircle, X } from '@phosphor-icons/react'
 import { motion } from 'motion/react'
 import { useMemo, useSyncExternalStore } from 'react'
 import { useLocale, useT } from '../../i18n'
 import { formatDay, relativeDay } from '../../lib/format'
 import { dayPart, useToday, zone } from '../../lib/time'
-import { toneStyle } from '../../lib/tone'
+import { toneFor, toneStyle } from '../../lib/tone'
 import { install } from '../../platform'
-import { useData } from '../../state/data'
+import { useData, useMe, usePartner } from '../../state/data'
 import { type TabId, useNav } from '../../state/nav'
 import { useSettings } from '../../state/settings'
 import { useUi } from '../../state/ui'
+import { useFirstSyncPending, useSync } from '../../sync/engine'
 import { Avatar, CoupleAvatars } from '../../ui/Avatar'
-import { Pressable } from '../../ui/Pressable'
+import { IconButton, Pressable } from '../../ui/Pressable'
+import { NativeDateInput } from '../../ui/pickers'
 import { Screen, SectionLabel } from '../../ui/Screen'
-import { EventRow, toneOf, useOccurrences } from '../calendar/shared'
+import { RowSkeletons, Skeleton } from '../../ui/states'
+import { EventRow, useOccurrences } from '../calendar/shared'
+import { startOver } from '../onboarding/actions'
 
 export function TodayScreen() {
   const t = useT()
   const { locale } = useLocale()
   const today = useToday()
-  const me = useData((s) => s.me)
+  const me = useMe()
+  const mode = useData((s) => s.mode)
   const push = useNav((s) => s.push)
   const hour = Temporal.Now.plainTimeISO(zone).hour
 
@@ -40,18 +45,23 @@ export function TodayScreen() {
       barTitle={t.tabs.today}
       eyebrow={formatDay(today, locale)}
       actions={
-        <Pressable
-          aria-label={t.settings.title}
-          haptic="tap"
-          onPress={() => push({ name: 'settings' })}
-          className="rounded-full"
-        >
-          <Avatar person={me} size={34} />
-        </Pressable>
+        <>
+          <SyncBadge />
+          <Pressable
+            aria-label={t.settings.title}
+            haptic="tap"
+            onPress={() => push({ name: 'settings' })}
+            className="rounded-full"
+          >
+            <Avatar person={me} size={34} />
+          </Pressable>
+        </>
       }
     >
       <div className="space-y-1">
+        {mode === 'demo' && <DemoCard />}
         <TogetherCard />
+        <InviteCard />
         <InstallCard />
         <Countdowns />
         <UpNext />
@@ -66,7 +76,25 @@ function TogetherCard() {
   const { locale } = useLocale()
   const today = useToday()
   const since = useData((s) => s.togetherSince)
-  const count = dayCount(Temporal.PlainDate.from(since), today)
+  const setSince = useData((s) => s.setTogetherSince)
+
+  if (!since) {
+    return (
+      <section className="relative mx-4 flex items-center gap-4 rounded-card bg-surface p-5 shadow-soft transition-transform duration-200 active:scale-[0.98]">
+        <CoupleAvatars size={44} />
+        <span className="min-w-0 flex-1 font-display text-title font-bold">{t.empty.since}</span>
+        <CalendarPlus size={26} weight="duotone" className="text-coral" />
+        <NativeDateInput
+          label={t.settings.togetherSince}
+          value={null}
+          max={today.toString()}
+          onChange={setSince}
+        />
+      </section>
+    )
+  }
+
+  const count = Math.max(1, dayCount(Temporal.PlainDate.from(since), today))
   const next = nextMilestone(count)
   const previous = previousMilestone(next)
   const progress = Math.min(1, Math.max(0, (count - previous) / (next - previous)))
@@ -106,12 +134,85 @@ function TogetherCard() {
   )
 }
 
+/** Shown in a real space until your person joins. */
+export function InviteCard() {
+  const t = useT()
+  const mode = useData((s) => s.mode)
+  const partner = usePartner()
+  const openSheet = useUi((s) => s.openSheet)
+  if (mode !== 'synced' || partner) return null
+
+  return (
+    <Pressable
+      haptic="tap"
+      onPress={() => openSheet({ type: 'invite' })}
+      className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center gap-3 rounded-card bg-coral-soft p-4"
+    >
+      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-surface text-2xl shadow-soft">
+        💌
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-headline font-semibold text-coral-ink">{t.invite.title}</span>
+        <span className="block text-sub text-ink-2">{t.invite.hint}</span>
+      </span>
+    </Pressable>
+  )
+}
+
+function DemoCard() {
+  const t = useT()
+  return (
+    <section className="mx-4 mb-3 flex items-center gap-3 rounded-card bg-honey-soft py-3 pl-4 pr-3">
+      <span aria-hidden className="text-2xl">
+        👀
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-headline font-semibold text-honey-ink">{t.demo.badge}</span>
+        <span className="block text-sub text-ink-2">{t.demo.hint}</span>
+      </span>
+      <Pressable
+        haptic="tap"
+        onPress={startOver}
+        className="shrink-0 rounded-full bg-ink px-3.5 py-2 text-sub font-bold text-canvas"
+      >
+        {t.demo.startForReal}
+      </Pressable>
+    </section>
+  )
+}
+
+/** A quiet icon in the corner when syncing isn't working, with the reason on tap. */
+function SyncBadge() {
+  const t = useT()
+  const mode = useData((s) => s.mode)
+  const status = useSync((s) => s.status)
+  if (mode !== 'synced') return null
+  if (status !== 'offline' && status !== 'error' && status !== 'signed-out') return null
+
+  const message =
+    status === 'offline' ? t.sync.offline : status === 'error' ? t.sync.error : t.sync.signedOut
+  return (
+    <IconButton
+      label={message}
+      haptic="tap"
+      onPress={() => useUi.getState().showToast(message)}
+      className="text-ink-2"
+    >
+      {status === 'offline' ? (
+        <CloudSlash size={18} weight="bold" />
+      ) : (
+        <WarningCircle size={18} weight="bold" className="text-coral-ink" />
+      )}
+    </IconButton>
+  )
+}
+
 function Countdowns() {
   const t = useT()
   const today = useToday()
   const events = useData((s) => s.events)
-  const me = useData((s) => s.me)
-  const partner = useData((s) => s.partner)
+  const me = useMe()
+  const partner = usePartner()
   const push = useNav((s) => s.push)
 
   const upcoming = useMemo(
@@ -138,7 +239,7 @@ function Countdowns() {
             <Pressable
               key={o.key}
               onPress={() => push({ name: 'event', id: o.event.id, date: o.startDate.toString() })}
-              style={toneStyle(toneOf(o.event, me, partner))}
+              style={toneStyle(toneFor(o.event.forUserId, me, partner))}
               className="flex w-40 shrink-0 snap-start flex-col rounded-card bg-tone-soft p-4"
             >
               <span className="text-3xl">{o.event.emoji ?? '⏳'}</span>
@@ -162,6 +263,7 @@ function UpNext() {
   const { locale } = useLocale()
   const today = useToday()
   const push = useNav((s) => s.push)
+  const loading = useFirstSyncPending()
   const tomorrow = today.add({ days: 1 })
   const occurrences = useOccurrences(today, today.add({ days: 2 }))
 
@@ -170,28 +272,32 @@ function UpNext() {
   return (
     <section>
       <SectionLabel>{t.today.next}</SectionLabel>
-      <div className="space-y-3 px-2">
-        {days.map(({ day, items }) => (
-          <div key={day.toString()}>
-            <p className="px-3 pb-1 text-sub font-semibold text-ink-2">
-              {relativeDay(day, today, t, locale)}
-            </p>
-            {items.length === 0 ? (
-              <p className="px-3 py-2 text-body text-ink-3">{t.today.free}</p>
-            ) : (
-              items.map((o) => (
-                <EventRow
-                  key={o.key}
-                  occurrence={o}
-                  onPress={() =>
-                    push({ name: 'event', id: o.event.id, date: o.startDate.toString() })
-                  }
-                />
-              ))
-            )}
-          </div>
-        ))}
-      </div>
+      {loading ? (
+        <RowSkeletons count={3} />
+      ) : (
+        <div className="space-y-3 px-2">
+          {days.map(({ day, items }) => (
+            <div key={day.toString()}>
+              <p className="px-3 pb-1 text-sub font-semibold text-ink-2">
+                {relativeDay(day, today, t, locale)}
+              </p>
+              {items.length === 0 ? (
+                <p className="px-3 py-2 text-body text-ink-3">{t.today.free}</p>
+              ) : (
+                items.map((o) => (
+                  <EventRow
+                    key={o.key}
+                    occurrence={o}
+                    onPress={() =>
+                      push({ name: 'event', id: o.event.id, date: o.startDate.toString() })
+                    }
+                  />
+                ))
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -199,29 +305,49 @@ function UpNext() {
 function ListPeek() {
   const t = useT()
   const lists = useData((s) => s.lists)
+  const items = useData((s) => s.items)
   const open = useNav((s) => s.open)
+  const loading = useFirstSyncPending()
+
+  const left = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of items) {
+      if (!item.done) counts.set(item.listId, (counts.get(item.listId) ?? 0) + 1)
+    }
+    return counts
+  }, [items])
+
+  if (loading) {
+    return (
+      <section aria-hidden>
+        <SectionLabel>{t.today.lists}</SectionLabel>
+        <div className="flex gap-2 px-4 pb-2">
+          <Skeleton className="h-10 w-32 rounded-full" />
+          <Skeleton className="h-10 w-24 rounded-full" />
+          <Skeleton className="h-10 w-28 rounded-full" />
+        </div>
+      </section>
+    )
+  }
   if (lists.length === 0) return null
 
   return (
     <section>
       <SectionLabel>{t.today.lists}</SectionLabel>
       <div className="scroll-x flex gap-2 px-4 pb-2">
-        {lists.map((list) => {
-          const left = list.items.filter((i) => !i.done).length
-          return (
-            <Pressable
-              key={list.id}
-              onPress={() => open('lists' satisfies TabId, { name: 'list', id: list.id })}
-              className="flex shrink-0 items-center gap-2 rounded-full bg-surface py-2 pl-3 pr-4 shadow-soft"
-            >
-              <span className="text-lg">{list.emoji}</span>
-              <span className="text-sub font-semibold">{list.title}</span>
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-foot font-bold tabular-nums text-ink-2">
-                {left}
-              </span>
-            </Pressable>
-          )
-        })}
+        {lists.map((list) => (
+          <Pressable
+            key={list.id}
+            onPress={() => open('lists' satisfies TabId, { name: 'list', id: list.id })}
+            className="flex shrink-0 items-center gap-2 rounded-full bg-surface py-2 pl-3 pr-4 shadow-soft"
+          >
+            <span className="text-lg">{list.emoji}</span>
+            <span className="text-sub font-semibold">{list.title}</span>
+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-foot font-bold tabular-nums text-ink-2">
+              {left.get(list.id) ?? 0}
+            </span>
+          </Pressable>
+        ))}
       </div>
     </section>
   )
