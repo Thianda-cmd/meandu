@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>meandu</title>
+  <circle cx="206" cy="256" r="128" fill="#FF7A6B"/>
+  <circle cx="306" cy="256" r="128" fill="#6FB3A0"/>
+  <path d="M256 138.17A128 128 0 0 1 256 373.83A128 128 0 0 1 256 138.17Z" fill="#A98BFF"/>
+</svg>

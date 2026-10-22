@@ -3,7 +3,8 @@
 > Working title **meandu** ("me & u"). A calendar-first app for couples: plan together, count down to the good stuff, keep your memories.
 > Web + installable PWA first, native apps (iOS, Android, desktop) via Tauri v2 later.
 >
-> Status: planning · Last updated: 2026-10-22
+> Owner: Mikolaj Boje · Lives at: couple.bojes.org
+> Status: Phase 0 (clickable prototype) · Last updated: 2026-10-22
 
 1. [Decisions so far](#1-decisions-so-far)
 2. [Product scope](#2-product-scope)
@@ -38,6 +39,11 @@
 | v1 features | Shared calendar, countdowns & special days, shared lists, memories | |
 | Later | "When are we both free?" + external calendar import | Fits the native phase, where the app can read the phone's calendars |
 | Design | Own brand look everywhere, "Soft & warm", light + dark | |
+| Voice | Very little text, warm and human; icons and visuals do most of the talking | It should feel like a note from a friend, not software |
+| Languages | English and German from day one | |
+| Domain | couple.bojes.org | |
+| Minimum age | 14 | See the note in [§12](#12-privacy-security--gdpr) |
+| Unlinking | The space pauses instead of disappearing; relinking restores it; it is deleted when either partner asks | Reversible if it wasn't really over, and still lawful (details in [§8](#8-accounts--pairing)) |
 | Business | Free at launch; a plan per space is stored from day one so premium can be switched on later | |
 
 ## 2. Product scope
@@ -130,14 +136,15 @@ Cozy and romantic, never cheesy. Think Headspace × Paired.
 |---|---|
 | Language | TypeScript (strict) everywhere |
 | UI | React 19 (its `<Activity>` component keeps tabs alive in the background), Vite |
-| Routing | TanStack Router (typed URLs) with our own tab / stack navigator on top |
+| Navigation | Our own tab / stack navigator with URL sync (native back behaviour doesn't map onto URL routers, so we skipped TanStack Router) |
 | Interaction | React Aria Components (accessible, touch-correct primitives), Motion (springs and gestures) |
 | Styling | Tailwind CSS v4, design tokens as CSS variables |
 | Local database | Dexie (IndexedDB) with live queries |
 | Sync | A small sync layer of our own over Supabase ([§7](#7-sync)) |
 | Dates | Temporal API (polyfilled where missing), RFC 5545 recurrence rules |
 | Validation | Zod, shared by the app and server functions |
-| Languages | Paraglide JS (type-safe, only ships what's used), `Intl` for dates and numbers; English first |
+| Languages | Small typed dictionaries for English and German (the compiler catches missing German strings), `Intl` for dates and numbers |
+| Pickers | The phone's own date, time and option wheels, shown as formatted pills |
 | Long lists | TanStack Virtual (month view, agenda, memories) |
 | PWA | vite-plugin-pwa (Workbox) for the offline app shell and updates, plus our own service-worker code for Web Push |
 | Backend | Supabase in the EU: Postgres, Auth, Realtime, Storage, Cron, Edge Functions (Deno) |
@@ -233,7 +240,11 @@ Goal: every screen renders from the device, every write is instant, the partner 
 
 **On iPhones, install first.** When someone opens the site in Safari, onboarding suggests "Add to Home Screen" before signing in, because the installed app has its own storage and push notifications only work there.
 
-**Unlinking:** see [open questions](#17-open-questions).
+**Unlinking**
+1. Unlinking **pauses** the space. Nothing is deleted. Shared things are hidden from both partners, and each partner keeps their own private items and can export everything.
+2. If both partners agree, relinking brings everything back as it was.
+3. **Either partner can ask for deletion** at any time. The other partner is told, and the space is deleted for good after a 30-day grace period, so they can export first.
+4. To stay within GDPR's storage limits, a space that has been paused for **24 months** is deleted automatically, after a reminder email to both partners (proposal; easy to change).
 
 ## 9. Notifications & reminders
 
@@ -324,7 +335,8 @@ interface Platform {
 - No ad trackers; cookieless analytics, so likely no cookie banner (to confirm).
 - Fonts are self-hosted (loading Google Fonts from Google's servers is a known GDPR problem in the EU).
 - In-app data export (JSON + photos) and account deletion, which GDPR requires and the App Store requires too.
-- Privacy policy, terms, an imprint where required, and a minimum age ([open question](#17-open-questions)).
+- Privacy policy, terms and an imprint (Impressum).
+- **Minimum age 14.** Note: in Germany the GDPR age for *consent* (Art. 8) is 16, not 14. So 14 works as long as nothing for under-16s relies on consent: the core app runs on the user agreement, and optional extras like analytics or marketing emails stay off for under-16s. Worth a short legal check before launch.
 - Strict Content Security Policy, rate limits on sign-in and invites, secrets only in CI / Vercel / Supabase, two-factor auth on every account, automated dependency updates.
 
 ## 13. Quality, CI & environments
@@ -365,10 +377,10 @@ Prices are approximate and change over time.
 
 Each phase ends with something usable on a real phone.
 
-**Phase 0: Prototype & design system**
-- Monorepo, tooling, CI, Vercel previews
+**Phase 0: Prototype & design system** (built; now being tried on real phones)
+- Monorepo, tooling, CI, Vercel deploys
 - Design tokens, CSS base, navigation kit (tabs, stacks, sheets, swipe-back)
-- Clickable prototype with fake data: Today, Calendar (month + agenda), event detail, new-event sheet, Lists, Memories
+- Clickable prototype with demo data that stays on the device: Today, Calendar (month + list), event detail, new-plan sheet, Lists, Memories (with real photos), Settings (language, light/dark)
 - Done when: it feels native on your iPhone / Android phone and you love the look
 
 **Phase 1: Foundation**
@@ -416,12 +428,12 @@ Each phase ends with something usable on a real phone.
 
 ## 17. Open questions
 
-- **Name and domain:** is "meandu" / "me&u" the final name?
-- **Languages:** English first, then which?
-- **Unlinking:** what happens to shared data when a couple separates? Proposal: both can export everything first, private items move with their owner, and the shared space is archived and deleted after 30 days.
-- **Minimum age:** 16+ (simplest across the EU) or 18+?
+- **Name:** is "meandu" the name people will see, or only the working title? (The domain is decided: couple.bojes.org.)
+- **Database:** the Supabase free plan on the connected account already has its 2 projects ("blobbase" and "lemon"). For meandu's Frankfurt database, either free a slot or move that Supabase organisation to Pro (~$25/month, needed at launch anyway).
 - **Premium:** what's in it, and at what price? (Decide before Phase 5.)
 - **"Busy only" events:** v1 or later?
+
+Answered on 2026-10-22: languages (English + German), minimum age (14), unlinking (pause, see [§8](#8-accounts--pairing)).
 
 ## 18. References
 
