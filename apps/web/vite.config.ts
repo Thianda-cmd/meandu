@@ -49,6 +49,7 @@ export default defineConfig({
         // Fonts are cached at runtime instead, so devices only download the subsets they use.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
@@ -63,5 +64,7 @@ export default defineConfig({
       },
     }),
   ],
-  server: { host: true },
+  // In development the API runs separately (pnpm dev:api) on an embedded Postgres.
+  server: { host: true, proxy: { '/api': 'http://localhost:8787' } },
+  preview: { proxy: { '/api': 'http://localhost:8787' } },
 })

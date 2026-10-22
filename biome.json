@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/dist", "!**/dev-dist", "!**/pnpm-lock.yaml", "!**/*.md"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/dev-dist",
+      "!**/pnpm-lock.yaml",
+      "!**/*.md",
+      "!apps/web/drizzle"
+    ]
   },
   "formatter": {
     "enabled": true,

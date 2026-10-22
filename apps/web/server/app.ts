@@ -1,0 +1,83 @@
+import { sql } from 'drizzle-orm'
+import { Hono } from 'hono'
+import { createMiddleware } from 'hono/factory'
+import { ZodError } from 'zod'
+import type { Auth } from './auth'
+import type { Db } from './db'
+import { AppError } from './errors'
+import { createSpace, createSpaceInput, inviteFor, joinInput, joinSpace, spaceState } from './space'
+import { applyMutations, pull, syncRequest } from './sync'
+
+type Env = { Variables: { userId: string } }
+
+/** The whole API. Runs as one Vercel function in production and as a local server in dev. */
+export function createApp({ db, auth }: { db: Db; auth: Auth }) {
+  const app = new Hono<Env>().basePath('/api')
+
+  app.onError((error, c) => {
+    if (error instanceof AppError) return c.json({ error: error.code }, error.status)
+    if (error instanceof ZodError) return c.json({ error: 'invalid' }, 400)
+    console.error(error)
+    return c.json({ error: 'server' }, 500)
+  })
+
+  app.notFound((c) => c.json({ error: 'not-found', path: c.req.path }, 404))
+
+  app.on(['GET', 'POST'], '/auth/*', (c) => auth.handler(c.req.raw))
+
+  app.get('/health', async (c) => {
+    const started = Date.now()
+    await db.execute(sql`select 1`)
+    return c.json({ ok: true, db: 'up', ms: Date.now() - started })
+  })
+
+  // Our own endpoints only accept requests from the app itself (CSRF protection on top of
+  // SameSite cookies and the JSON-only body).
+  const sameOrigin = createMiddleware<Env>(async (c, next) => {
+    const origin = c.req.header('origin')
+    if (!origin || new URL(origin).host !== new URL(c.req.url).host) {
+      throw new AppError(403, 'origin')
+    }
+    await next()
+  })
+
+  const signedIn = createMiddleware<Env>(async (c, next) => {
+    const session = await auth.api.getSession({ headers: c.req.raw.headers })
+    if (!session) throw new AppError(401, 'signed-out')
+    c.set('userId', session.user.id)
+    await next()
+  })
+
+  app.get('/space', signedIn, async (c) => {
+    const state = await spaceState(db, c.get('userId'))
+    return state ? c.json(state) : c.json({ error: 'no-space' }, 404)
+  })
+
+  app.post('/space', sameOrigin, signedIn, async (c) => {
+    const input = createSpaceInput.parse(await c.req.json())
+    return c.json(await createSpace(db, c.get('userId'), input))
+  })
+
+  app.post('/space/invite', sameOrigin, signedIn, async (c) => {
+    return c.json(await inviteFor(db, c.get('userId')))
+  })
+
+  app.post('/space/join', sameOrigin, signedIn, async (c) => {
+    const input = joinInput.parse(await c.req.json())
+    return c.json(await joinSpace(db, c.get('userId'), input))
+  })
+
+  app.post('/sync', sameOrigin, signedIn, async (c) => {
+    const userId = c.get('userId')
+    const body = syncRequest.parse(await c.req.json())
+    const state = await spaceState(db, userId)
+    if (!state) throw new AppError(409, 'no-space')
+    if (body.mutations.length) {
+      await db.transaction((tx) => applyMutations(tx, userId, state.spaceId, body.mutations))
+    }
+    // A device that comes from another space starts from scratch.
+    return c.json(await pull(db, userId, state.spaceId, body.since))
+  })
+
+  return app
+}
