@@ -4,7 +4,7 @@
 > Web + installable PWA first, native apps (iOS, Android, desktop) via Tauri v2 later.
 >
 > Owner: Mikolaj Boje · Lives at: couple.bojes.org
-> Status: Phase 1 (real accounts, pairing and sync work; account recovery and photo sync next) · Last updated: 2026-10-22
+> Status: Phase 1 built (passkeys and email codes, sync, photo previews, unlinking and account deletion); legal pages and data export next · Last updated: 2026-10-22
 
 1. [Decisions so far](#1-decisions-so-far)
 2. [Product scope](#2-product-scope)
@@ -231,7 +231,7 @@ Goal: every screen renders from the device, every write is instant, the partner 
 ## 8. Accounts & pairing
 
 **Sign-in**
-- **Today:** every phone gets an anonymous account (Better Auth) when it starts or joins a space, kept in a 400-day httpOnly cookie, so nobody needs an email address to start. The catch: losing that cookie (a new phone, cleared website data) means losing access, so a way to add an email code or a passkey comes before launch.
+- **Built:** every phone gets an anonymous account (Better Auth) when it starts or joins a space, kept in a 400-day httpOnly cookie, so nobody needs an email address to start. Right after, "Keep it safe" adds a passkey or a confirmed email to the same account, which then signs in on any phone and finds everything again. Email sign-in turns on once an email sender is set up; until then passkeys only. Accounts that can sign in elsewhere need a sign-in from the last day before changing how they sign in or deleting anything.
 - **6-digit email codes** everywhere (Better Auth email OTP), not magic links. On an iPhone a link opens Safari, which doesn't share storage with the installed app, so the user would end up signed in in the wrong place.
 - **Apple and Google** are offered where they work reliably: desktop, Android and a regular Safari tab. Redirect-based sign-in inside an installed iOS web app has a history of breaking, so we test it on real devices before showing those buttons there. The native apps use the system sign-in sheets and pass the ID token to our API (Better Auth supports ID-token sign-in). App Store rules require a privacy-friendly option next to Google sign-in, and Sign in with Apple covers that.
 - Production needs an email sender: an EU-based provider, branded templates, SPF / DKIM / DMARC from day one.
@@ -244,11 +244,12 @@ Goal: every screen renders from the device, every write is instant, the partner 
 
 **On iPhones, install first.** When someone opens the site in Safari, onboarding suggests "Add to Home Screen" before signing in, because the installed app has its own storage and push notifications only work there.
 
-**Unlinking**
-1. Unlinking **pauses** the space. Nothing is deleted. Shared things are hidden from both partners, and each partner keeps their own private items and can export everything.
-2. If both partners agree, relinking brings everything back as it was.
-3. **Either partner can ask for deletion** at any time. The other partner is told, and the space is deleted for good after a 30-day grace period, so they can export first.
-4. To stay within GDPR's storage limits, a space that has been paused for **24 months** is deleted automatically, after a reminder email to both partners (proposal; easy to change).
+**Unlinking** (built)
+1. Unlinking **pauses** the space for both partners. Nothing is deleted; nothing syncs or shows until it's relinked, and each phone keeps its copy.
+2. Relinking needs both partners to say yes; then everything is back as it was.
+3. While paused, **either partner can delete everything**, for both, right away (after confirming). The other phone learns it on its next sync and starts over.
+4. Deleting your account: alone, your space goes with it. With a partner, they keep what you shared; your profile is erased and your private plans deleted, and a paused space opens up again for them.
+5. Not built yet (proposals): a 30-day grace period with an export before "delete everything" takes effect, and deleting a space that has been paused for **24 months**, after a reminder email to both.
 
 ## 9. Notifications & reminders
 
@@ -273,8 +274,8 @@ On iPhones, web push only works in the installed app (iOS 16.4+). We ask for per
 - Photos are resized on the device (long edge ~2560px, JPEG), plus a thumbnail (~480px) and a tiny blur placeholder (thumbhash) so the grid appears instantly.
 - Re-encoding strips the photo's metadata, including GPS location; we read the capture date first and keep it.
 - Uploads go through a queue stored on the device, so adding memories offline works.
-- **Now:** photos stay on the phone that added them; the partner sees the memory with a calm placeholder.
-- **Next:** a private EU object store (Vercel Blob or an S3-compatible EU provider) under `space_id/…`, readable only by the two members and shown through short-lived signed links. Thumbnails are cached on the device.
+- **Built:** the photo itself (1600 px JPEG) stays on the phone that added it. A 960 px preview (WebP where the browser can write it) goes to the database after the next sync, through a queue kept on the phone, so the partner and your other phones see it too. Only the two members can fetch it, never while unlinked; fetched previews are kept on the device. A daily job deletes previews no memory has used for a day.
+- **Next:** full-size originals in a private EU object store (Vercel Blob or an S3-compatible EU provider), a premium candidate.
 - The free plan gets a generous storage limit per space; more storage or full-resolution originals are premium candidates.
 
 ## 11. Native feel: the building blocks
@@ -336,10 +337,10 @@ interface Platform {
 - Data stays in the EU (Neon and the API in Frankfurt), with data processing agreements for every processor (Neon, Vercel, email provider, Sentry, analytics).
 - Every API query is scoped to the caller's space. Automated tests cover partners' private events, who may change what, and other couples' data.
 - Requests that change something must come from the app's own address (CSRF protection on top of SameSite cookies and JSON-only bodies).
-- Photos will be private and served through signed links.
+- Photo previews are private: every request checks that the photo belongs to the caller's space, and nothing is served while the space is paused.
 - No ad trackers; cookieless analytics, so likely no cookie banner (to confirm).
 - Fonts are self-hosted (loading Google Fonts from Google's servers is a known GDPR problem in the EU).
-- In-app data export (JSON + photos) and account deletion, which GDPR requires and the App Store requires too.
+- Account deletion is built (Settings → your account). In-app data export (JSON + photos) is still to do; GDPR asks for it and the App Store requires deletion too.
 - Privacy policy, terms and an imprint (Impressum).
 - **Minimum age 14.** Note: in Germany the GDPR age for *consent* (Art. 8) is 16, not 14. So 14 works as long as nothing for under-16s relies on consent: the core app runs on the user agreement, and optional extras like analytics or marketing emails stay off for under-16s. Worth a short legal check before launch.
 - Strict Content Security Policy, rate limits on sign-in and invites, secrets only in CI / Vercel, two-factor auth on every account, automated dependency updates.
@@ -388,12 +389,14 @@ Each phase ends with something usable on a real phone.
 - Clickable prototype with demo data that stays on the device: Today, Calendar (month + list), event detail, new-plan sheet, Lists, Memories (with real photos), Settings (language, light/dark)
 - Done when: it feels native on your iPhone / Android phone and you love the look
 
-**Phase 1: Foundation** (mostly built)
+**Phase 1: Foundation** (built)
 - Built: Neon (Frankfurt) + the API on Vercel, schema and migrations, permission tests
 - Built: onboarding, solo mode, pairing with a code or link, demo mode
 - Built: the space on the phone, sync engine, offline outbox (polling for now)
 - Built: launch screens (iOS startup images, light + dark), skeletons, empty and error states; PWA basics from Phase 0
-- Next: email codes or passkeys so an account survives a new phone; pokes instead of polling
+- Built: passkeys and email codes on the same account, so it survives a new phone
+- Built: editing lists, items and memories; photo previews in the cloud; unlinking, relinking, deleting a space or an account
+- Next: pokes instead of polling
 - Done when: two paired phones see each other's changes within seconds, including after being offline (passes with two simulated phones; real phones next)
 
 **Phase 2: Calendar core**
@@ -409,7 +412,7 @@ Each phase ends with something usable on a real phone.
 - Memories with photos (upload queue, offline thumbnails)
 
 **Phase 4: Launch**
-- Settings, data export, account deletion, unlinking
+- Settings and data export (account deletion and unlinking are built)
 - Languages, accessibility pass, performance pass, Sentry and analytics
 - Email sending, legal pages, landing page, domain
 - Private beta with real couples, then the public web launch
