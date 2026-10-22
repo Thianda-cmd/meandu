@@ -8,6 +8,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from './app'
 import { createAuth } from './auth'
 import type { Email } from './email'
+import { tidyPhotos } from './photos'
 import * as schema from './schema'
 
 const ORIGIN = 'http://localhost:4173'
@@ -65,6 +66,32 @@ class Device {
     }
     // biome-ignore lint/suspicious/noExplicitAny: responses are checked field by field below
     return { status: res.status, json: (await res.json().catch(() => null)) as any }
+  }
+
+  /** Sends raw bytes, like the app uploading a photo. */
+  async put(path: string, bytes: Uint8Array<ArrayBuffer>, type = 'image/jpeg') {
+    const res = await app.request(`${ORIGIN}/api${path}`, {
+      method: 'PUT',
+      headers: {
+        origin: ORIGIN,
+        'content-type': type,
+        cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
+      },
+      body: bytes,
+    })
+    return { status: res.status, json: (await res.json().catch(() => null)) as { error?: string } }
+  }
+
+  /** Fetches a photo's bytes. */
+  async photo(id: string) {
+    const res = await app.request(`${ORIGIN}/api/photos/${id}`, {
+      headers: { cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ') },
+    })
+    return {
+      status: res.status,
+      type: res.headers.get('content-type'),
+      bytes: new Uint8Array(await res.arrayBuffer()),
+    }
   }
 
   async signIn(): Promise<string> {
@@ -471,5 +498,99 @@ describe('deleting an account', () => {
     expect(res.status).toBe(403)
     expect(res.json.error).toBe('SESSION_NOT_FRESH')
     expect(await db.select().from(schema.user).where(eq(schema.user.id, me))).toHaveLength(1)
+  })
+})
+
+/** The first bytes of a JPEG are all the server checks. */
+const jpeg = (n: number) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, n, 1, 2, 3])
+const photoId = (n: number) => `0192f0c0-0000-7000-8000-${String(n).padStart(12, '0')}`
+const memory = (id: string, photoIds: string[]): Mutation => ({
+  kind: 'memory',
+  id,
+  op: 'put',
+  data: {
+    title: 'Beach',
+    date: '2026-08-01',
+    photos: photoIds.map((p) => ({ id: p, kind: 'blob' })),
+  },
+})
+
+describe('photos', () => {
+  it('keeps a preview your person can see, and no one else', async () => {
+    const { a, b } = await couple()
+    expect((await a.put(`/photos/${photoId(1)}`, jpeg(1))).status).toBe(200)
+    // Sending it again is fine and changes nothing.
+    expect((await a.put(`/photos/${photoId(1)}`, jpeg(9))).status).toBe(200)
+
+    const seen = await b.photo(photoId(1))
+    expect(seen.status).toBe(200)
+    expect(seen.type).toBe('image/jpeg')
+    expect([...seen.bytes]).toEqual([...jpeg(1)])
+
+    const stranger = new Device()
+    await stranger.signIn()
+    await stranger.request('/space', { name: 'S', tone: 'bay' })
+    expect((await stranger.photo(photoId(1))).status).toBe(404)
+  })
+
+  it('only takes small JPEG or WebP images with a proper id', async () => {
+    const { a } = await couple()
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>')
+    expect((await a.put(`/photos/${photoId(2)}`, svg, 'image/svg+xml')).status).toBe(415)
+    expect((await a.put('/photos/not-an-id', jpeg(2))).status).toBe(400)
+    expect((await a.put(`/photos/${photoId(3)}`, new Uint8Array(700_000).fill(0xff))).status).toBe(
+      413,
+    )
+    const webp = new TextEncoder().encode('RIFF\0\0\0\0WEBPVP8 ')
+    expect((await a.put(`/photos/${photoId(4)}`, webp, 'image/webp')).status).toBe(200)
+    expect((await a.photo(photoId(4))).type).toBe('image/webp')
+  })
+
+  it('shows nothing while unlinked', async () => {
+    const { a, b } = await couple()
+    await a.put(`/photos/${photoId(5)}`, jpeg(5))
+    await a.request('/space/unlink', {})
+    expect((await b.photo(photoId(5))).status).toBe(409)
+    expect((await b.put(`/photos/${photoId(6)}`, jpeg(6))).status).toBe(409)
+  })
+
+  it('come along when joining your person', async () => {
+    const mine = new Device()
+    const yours = new Device()
+    await mine.signIn()
+    await yours.signIn()
+    await mine.request('/space', { name: 'A', tone: 'coral' })
+    await yours.request('/space', { name: 'B', tone: 'sage' })
+    await yours.put(`/photos/${photoId(7)}`, jpeg(7))
+    await yours.sync(0, [memory('solo-trip', [photoId(7)])])
+
+    const { json } = await mine.request('/space/invite', {})
+    await yours.request('/space/join', { code: json.code, name: 'B', tone: 'sage' })
+    expect((await mine.photo(photoId(7))).status).toBe(200)
+  })
+
+  it('are deleted a day after no memory uses them', async () => {
+    const { a } = await couple()
+    await a.put(`/photos/${photoId(8)}`, jpeg(8))
+    await a.put(`/photos/${photoId(9)}`, jpeg(9))
+    const first = await a.sync(0, [memory('beach', [photoId(8), photoId(9)])])
+
+    // One photo taken out of the memory: it's marked, but kept for now.
+    await a.sync(first.version, [{ ...memory('beach', [photoId(8)]) }])
+    await tidyPhotos(db)
+    expect((await a.photo(photoId(9))).status).toBe(200)
+
+    // A day later it's gone; the one still in the memory stays.
+    await db
+      .update(schema.photos)
+      .set({ orphanedAt: sql`now() - interval '25 hours'` })
+      .where(eq(schema.photos.id, photoId(9)))
+    await tidyPhotos(db)
+    expect((await a.photo(photoId(9))).status).toBe(404)
+    expect((await a.photo(photoId(8))).status).toBe(200)
+  })
+
+  it("doesn't run the daily tidy for just anyone", async () => {
+    expect((await new Device().request('/cron/tidy')).status).toBe(401)
   })
 })

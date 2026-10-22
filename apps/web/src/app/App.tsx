@@ -5,7 +5,7 @@ import { Onboarding } from '../features/onboarding/Onboarding'
 import { SheetHost } from '../features/SheetHost'
 import { PausedView } from '../features/space/PausedView'
 import { useT } from '../i18n'
-import { forgetPhotosExcept } from '../lib/photos'
+import { forgetPhotosExcept, queueOlderPreviews, uploadPreviews } from '../lib/photos'
 import { startHistorySync } from '../navigation/history'
 import { TabBar, TabNavigator } from '../navigation/TabBar'
 import { haptics } from '../platform'
@@ -53,6 +53,7 @@ export function App() {
   }, [mode])
 
   useTidyPhotos(hydrated)
+  usePhotoUploads()
   useSpaceGone()
 
   // The launch screen stays up while the saved data loads (a few milliseconds).
@@ -104,6 +105,9 @@ function Main() {
   )
 }
 
+const photosInUse = () =>
+  new Set(useData.getState().memories.flatMap((m) => m.photos.map((p) => p.id)))
+
 /**
  * Photos of a deleted memory stay a moment, for "Undo". A while after launch, the ones no
  * memory uses anymore are deleted from the phone.
@@ -111,15 +115,29 @@ function Main() {
 function useTidyPhotos(hydrated: boolean) {
   useEffect(() => {
     if (!hydrated) return
-    const timer = window.setTimeout(() => {
-      const { mode, cursor, memories } = useData.getState()
+    const timer = window.setTimeout(async () => {
+      const { mode, cursor } = useData.getState()
       // Until a space's first sync, its memories aren't all on this phone yet.
       if (mode === 'synced' && cursor === 0) return
-      const used = new Set(memories.flatMap((m) => m.photos.map((p) => p.id)))
-      void forgetPhotosExcept(used, Date.now() - 10 * 60_000)
+      await forgetPhotosExcept(photosInUse(), Date.now() - 10 * 60_000)
+      if (mode !== 'synced') return
+      await queueOlderPreviews(photosInUse())
+      void uploadPreviews(photosInUse())
     }, 5000)
     return () => window.clearTimeout(timer)
   }, [hydrated])
+}
+
+/** New photos' previews go up after each sync, so your person sees them too. */
+function usePhotoUploads() {
+  useEffect(
+    () =>
+      useSync.subscribe((state, previous) => {
+        if (state.lastSyncedAt === previous.lastSyncedAt) return
+        if (useData.getState().mode === 'synced') void uploadPreviews(photosInUse())
+      }),
+    [],
+  )
 }
 
 /** Your person deleted your space after unlinking: back to the start, gently. */

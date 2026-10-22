@@ -12,6 +12,7 @@ import { Group } from '../../ui/controls'
 import { Pressable } from '../../ui/Pressable'
 import { DatePicker } from '../../ui/pickers'
 import { SheetBody, SheetHeader } from '../../ui/Sheet'
+import { Spinner } from '../../ui/states'
 import { PhotoView } from './Photo'
 
 const MAX_PHOTOS = 12
@@ -85,9 +86,12 @@ export function MemorySheet({ eventId, memoryId }: { eventId?: string; memoryId?
             haptic="tap"
             isDisabled={!title.trim() || saving}
             onPress={save}
-            className="rounded-full bg-coral px-4 py-1.5 text-headline font-semibold text-white"
+            aria-busy={saving || undefined}
+            className="relative grid place-items-center rounded-full bg-coral px-4 py-1.5 text-headline font-semibold text-white"
           >
-            {t.common.save}
+            {/* Photos are made smaller first, which takes a moment with a few of them. */}
+            <span className={saving ? 'invisible' : undefined}>{t.common.save}</span>
+            {saving && <Spinner size={16} className="absolute" />}
           </Pressable>
         }
       />

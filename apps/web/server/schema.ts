@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -179,4 +180,30 @@ export const records = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index('records_space_version_idx').on(t.spaceId, t.version)],
+)
+
+const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
+  dataType: () => 'bytea',
+})
+
+/**
+ * Small copies of memory photos, so your person sees them too. The full photo stays on the
+ * phone it was added on. Unused ones are deleted a day after no memory needs them.
+ */
+export const photos = pgTable(
+  'photos',
+  {
+    id: text('id').primaryKey(),
+    spaceId: uuid('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    bytes: bytea('bytes').notNull(),
+    size: integer('size').notNull(),
+    createdBy: text('created_by').notNull(),
+    createdAt: createdAt(),
+    /** Since when no memory uses it. */
+    orphanedAt: timestamp('orphaned_at', { withTimezone: true }),
+  },
+  (t) => [index('photos_space_idx').on(t.spaceId)],
 )

@@ -1,5 +1,5 @@
 import { Button, type ButtonProps } from 'react-aria-components'
-import { cx } from '../lib/cx'
+import { cx, unless } from '../lib/cx'
 import { haptics } from '../platform'
 
 export interface PressableProps extends Omit<ButtonProps, 'className'> {
@@ -25,7 +25,8 @@ export function Pressable({
         onPress?.(event)
       }}
       className={cx(
-        'cursor-default text-left',
+        'cursor-default',
+        unless(className, /(^|\s)text-(left|center|right|justify|start|end)(\s|$)/, 'text-left'),
         feedback === 'scale' && 'press',
         feedback === 'row' && 'press-row',
         className,

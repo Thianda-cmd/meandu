@@ -23,6 +23,11 @@ const sendEmail = resendSender(
 )
 
 const auth = createAuth(db, { sendEmail, background: waitUntil })
-const app = createApp({ db, auth, emailSignIn: Boolean(sendEmail) })
+const app = createApp({
+  db,
+  auth,
+  emailSignIn: Boolean(sendEmail),
+  cronSecret: process.env.CRON_SECRET,
+})
 
 export default { fetch: app.fetch }

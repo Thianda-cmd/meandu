@@ -41,7 +41,9 @@ export function PhotoView({
   }
 
   return (
-    <div className={cx('relative overflow-hidden', !shown && 'skeleton', className)}>
+    // No position of its own: callers place it (e.g. `absolute inset-0` in the grid), and a
+    // `relative` here would win over theirs.
+    <div className={cx('overflow-hidden', !shown && 'skeleton', className)}>
       {state.status === 'ready' && (
         <img
           src={state.url}

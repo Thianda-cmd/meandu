@@ -6,6 +6,7 @@ import { accountInfo, deleteAccount } from './account.js'
 import type { Auth } from './auth.js'
 import type { Db } from './db.js'
 import { AppError } from './errors.js'
+import { loadPhoto, MAX_PHOTO_BYTES, savePhoto, tidyPhotos } from './photos.js'
 import {
   createSpace,
   createSpaceInput,
@@ -28,11 +29,14 @@ export function createApp({
   db,
   auth,
   emailSignIn = false,
+  cronSecret,
 }: {
   db: Db
   auth: Auth
   /** Whether codes can be emailed (an email service is set up). */
   emailSignIn?: boolean
+  /** Vercel sends it with scheduled jobs; without it they don't run. */
+  cronSecret?: string
 }) {
   const app = new Hono<Env>().basePath('/api')
 
@@ -133,6 +137,32 @@ export function createApp({
   app.post('/space/delete', sameOrigin, signedIn, recentSignIn, async (c) => {
     await deleteSpace(db, c.get('userId'))
     return c.json({ ok: true })
+  })
+
+  app.put('/photos/:id', sameOrigin, signedIn, async (c) => {
+    if (Number(c.req.header('content-length') ?? 0) > MAX_PHOTO_BYTES) {
+      throw new AppError(413, 'too-big')
+    }
+    const bytes = new Uint8Array(await c.req.arrayBuffer())
+    await savePhoto(db, c.get('userId'), c.req.param('id'), bytes)
+    return c.json({ ok: true })
+  })
+
+  app.get('/photos/:id', signedIn, async (c) => {
+    const photo = await loadPhoto(db, c.get('userId'), c.req.param('id'))
+    // A copy on a plain ArrayBuffer, whatever the database driver handed back.
+    return c.body(new Uint8Array(photo.bytes), 200, {
+      'content-type': photo.type,
+      'x-content-type-options': 'nosniff',
+    })
+  })
+
+  /** Once a day (see vercel.json): previews no memory uses anymore are deleted. */
+  app.get('/cron/tidy', async (c) => {
+    if (!cronSecret || c.req.header('authorization') !== `Bearer ${cronSecret}`) {
+      throw new AppError(401, 'unauthorized')
+    }
+    return c.json(await tidyPhotos(db))
   })
 
   app.post('/sync', sameOrigin, signedIn, async (c) => {

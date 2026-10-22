@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { cx } from '../lib/cx'
+import { cx, unless } from '../lib/cx'
 import { Pressable, type PressableProps } from './Pressable'
 
 /** A calm, friendly placeholder for when there's nothing to show yet. */
@@ -58,7 +58,13 @@ export function ErrorLine({ text }: { text: string | null | undefined }) {
 
 /** A softly shimmering block standing in for content that's on its way. */
 export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {
-  return <span aria-hidden className={cx('skeleton block rounded-xl', className)} style={style} />
+  return (
+    <span
+      aria-hidden
+      className={cx('skeleton block', unless(className, /(^|\s)rounded-/, 'rounded-xl'), className)}
+      style={style}
+    />
+  )
 }
 
 /** Placeholder rows shaped like the event rows they stand in for. */

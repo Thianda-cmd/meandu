@@ -3,7 +3,7 @@ import { and, asc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from './db.js'
 import { AppError } from './errors.js'
-import { invites, members, rateLimit, records, spaces } from './schema.js'
+import { invites, members, photos, rateLimit, records, spaces } from './schema.js'
 import { applyMutations, nextVersion, settingsId } from './sync.js'
 
 const TONES = ['coral', 'sage', 'honey', 'bay', 'berry'] as const
@@ -234,6 +234,7 @@ export async function joinSpace(
         .update(records)
         .set({ spaceId: target, version })
         .where(and(eq(records.spaceId, current.spaceId), ne(records.kind, 'settings')))
+      await tx.update(photos).set({ spaceId: target }).where(eq(photos.spaceId, current.spaceId))
       await tx.delete(members).where(eq(members.userId, userId))
       await tx.delete(spaces).where(eq(spaces.id, current.spaceId))
     }

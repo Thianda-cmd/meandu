@@ -4,6 +4,12 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "dist",
   "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/api/cron/tidy",
+      "schedule": "23 3 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
