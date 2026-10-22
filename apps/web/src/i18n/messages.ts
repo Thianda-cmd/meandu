@@ -110,6 +110,31 @@ export const en = {
     memory: 'Memory',
     list: 'List',
   },
+  space: {
+    unlink: 'Unlink',
+    unlinkTitle: (name: string) => `Unlink from ${name}?`,
+    unlinkHint:
+      'meandu pauses for both of you. Nothing is deleted, and you can relink anytime, together.',
+    pausedTitle: 'Paused',
+    pausedByMe: (name: string) => `You unlinked from ${name}. Nothing is lost.`,
+    pausedByThem: (name: string) => `${name} unlinked. Nothing is lost.`,
+    relink: 'Relink',
+    theyWantBack: (name: string) => `${name} wants to relink 💛`,
+    waitingFor: (name: string) => `Waiting for ${name}`,
+    back: 'Back together 💛',
+    deleteEverything: 'Delete everything',
+    deleteEverythingTitle: 'Delete everything?',
+    deleteEverythingHint:
+      "Your space and everything in it is deleted, for both of you. This can't be undone.",
+    deleted: "Everything's deleted. Take care.",
+    gone: 'Your space was deleted.',
+    deleteAccount: 'Delete account',
+    deleteAccountTitle: 'Delete your account?',
+    deleteAccountHint: "You and everything in meandu are deleted. This can't be undone.",
+    deleteAccountPairedHint: (name: string) =>
+      `${name} keeps what you shared. Your name and private plans are deleted. This can't be undone.`,
+    accountDeleted: 'Account deleted.',
+  },
   settings: {
     title: 'Settings',
     you: 'You',
@@ -357,6 +382,33 @@ export const de: Messages = {
     countdown: 'Countdown',
     memory: 'Erinnerung',
     list: 'Liste',
+  },
+  space: {
+    unlink: 'Verbindung trennen',
+    unlinkTitle: (name: string) => `Verbindung zu ${name} trennen?`,
+    unlinkHint:
+      'meandu pausiert für euch beide. Nichts wird gelöscht, und ihr könnt euch jederzeit gemeinsam wieder verbinden.',
+    pausedTitle: 'Pausiert',
+    pausedByMe: (name: string) =>
+      `Du hast die Verbindung zu ${name} getrennt. Nichts geht verloren.`,
+    pausedByThem: (name: string) => `${name} hat die Verbindung getrennt. Nichts geht verloren.`,
+    relink: 'Wieder verbinden',
+    theyWantBack: (name: string) => `${name} möchte sich wieder verbinden 💛`,
+    waitingFor: (name: string) => `Warte auf ${name}`,
+    back: 'Wieder zusammen 💛',
+    deleteEverything: 'Alles löschen',
+    deleteEverythingTitle: 'Alles löschen?',
+    deleteEverythingHint:
+      'Euer Bereich und alles darin wird für euch beide gelöscht. Das lässt sich nicht rückgängig machen.',
+    deleted: 'Alles gelöscht. Pass auf dich auf.',
+    gone: 'Euer Bereich wurde gelöscht.',
+    deleteAccount: 'Konto löschen',
+    deleteAccountTitle: 'Konto löschen?',
+    deleteAccountHint:
+      'Du und alles in meandu werden gelöscht. Das lässt sich nicht rückgängig machen.',
+    deleteAccountPairedHint: (name: string) =>
+      `${name} behält, was ihr geteilt habt. Dein Name und deine privaten Pläne werden gelöscht. Das lässt sich nicht rückgängig machen.`,
+    accountDeleted: 'Konto gelöscht.',
   },
   settings: {
     title: 'Einstellungen',

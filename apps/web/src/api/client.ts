@@ -43,9 +43,16 @@ export const api = {
   invite: () => call<InviteInfo>('/space/invite', {}),
   join: (input: { code: string; name: string; tone: string }) =>
     call<SpaceState>('/space/join', input),
+  /** Pauses the space for both of you. */
+  unlink: () => call<SpaceState>('/space/unlink', {}),
+  /** Says yes to relinking; the space is back once both of you have. */
+  relink: () => call<SpaceState>('/space/relink', {}),
+  /** Deletes the space and everything in it, for both of you. */
+  deleteSpace: () => call<{ ok: true }>('/space/delete', {}),
   sync: (request: SyncRequest) => call<SyncResponse>('/sync', request),
   config: () => call<{ email: boolean }>('/config'),
   account: () => call<AccountInfo>('/account'),
+  deleteAccount: () => call<{ ok: true }>('/account/delete', {}),
 }
 
 /** Makes sure this device has an account, creating an anonymous one on first use. */

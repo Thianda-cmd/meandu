@@ -65,7 +65,7 @@ export function InviteSheet() {
             {invite ? (
               <Code code={invite.code} />
             ) : error && error !== 'full' ? (
-              <BigButton variant="soft" className="w-auto px-6" onPress={() => void load()}>
+              <BigButton variant="soft" fit onPress={() => void load()}>
                 {t.oops.retry}
               </BigButton>
             ) : (

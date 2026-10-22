@@ -13,7 +13,14 @@ vi.mock('idb-keyval', () => {
 
 const { useData } = await import('./data')
 
-const space: SpaceState = { spaceId: 's1', userId: 'me', status: 'active', members: [] }
+const space: SpaceState = {
+  spaceId: 's1',
+  userId: 'me',
+  status: 'active',
+  members: [],
+  pausedBy: null,
+  wantsBack: [],
+}
 
 const dinner: CalendarEvent = {
   id: 'e1',

@@ -359,3 +359,117 @@ describe('accounts', () => {
     expect(res.json.authenticatorSelection.residentKey).toBe('required')
   })
 })
+
+/** Two phones in one space: `a` started it, `b` joined with the invite code. */
+async function couple() {
+  const a = new Device()
+  const b = new Device()
+  const aId = await a.signIn()
+  const bId = await b.signIn()
+  await a.request('/space', { name: 'A', tone: 'coral' })
+  const { json } = await a.request('/space/invite', {})
+  await b.request('/space/join', { code: json.code, name: 'B', tone: 'sage' })
+  return { a, b, aId, bId }
+}
+
+const syncError = async (phone: Device) =>
+  (await phone.request('/sync', { since: 0, mutations: [] })).json.error
+
+describe('unlinking', () => {
+  it('pauses the space for both of you until you both relink', async () => {
+    const { a, b, aId, bId } = await couple()
+    await a.sync(0, [event('trip', { title: 'Lisbon' })])
+
+    const unlinked = await b.request('/space/unlink', {})
+    expect(unlinked.json).toMatchObject({ status: 'paused', pausedBy: bId, wantsBack: [] })
+    // Nothing syncs, and no one new can be invited, while it's paused.
+    expect(await syncError(a)).toBe('paused')
+    expect((await a.request('/space/invite', {})).json.error).toBe('paused')
+
+    // One yes isn't enough.
+    const first = await a.request('/space/relink', {})
+    expect(first.json).toMatchObject({ status: 'paused', wantsBack: [aId] })
+    expect(await syncError(b)).toBe('paused')
+    const second = await b.request('/space/relink', {})
+    expect(second.json).toMatchObject({ status: 'active', pausedBy: null, wantsBack: [] })
+
+    // Nothing was lost.
+    const back = await b.sync(0)
+    expect(back.records.find((r) => r.id === 'trip')?.data?.title).toBe('Lisbon')
+  })
+
+  it('lets either of you delete everything once paused, but not while together', async () => {
+    const { a, b } = await couple()
+    await a.sync(0, [event('concert', { title: 'Concert' })])
+    expect((await a.request('/space/delete', {})).json.error).toBe('paired')
+
+    await a.request('/space/unlink', {})
+    expect((await b.request('/space/delete', {})).status).toBe(200)
+    expect(await syncError(a)).toBe('no-space')
+    expect((await a.request('/space')).status).toBe(404)
+    expect(await db.select().from(schema.records).where(eq(schema.records.id, 'concert'))).toEqual(
+      [],
+    )
+  })
+})
+
+describe('deleting an account', () => {
+  it('takes your space along when no one else is in it', async () => {
+    const phone = new Device()
+    const me = await phone.signIn()
+    const { json } = await phone.request('/space', { name: 'Solo', tone: 'honey' })
+    await phone.sync(0, [event('yoga', { title: 'Yoga' })])
+
+    expect((await phone.request('/account/delete', {})).status).toBe(200)
+    // Signed out, and nothing left behind.
+    expect((await phone.request('/account')).status).toBe(401)
+    expect(await db.select().from(schema.user).where(eq(schema.user.id, me))).toEqual([])
+    expect(await db.select().from(schema.spaces).where(eq(schema.spaces.id, json.spaceId))).toEqual(
+      [],
+    )
+    expect(await db.select().from(schema.records).where(eq(schema.records.id, 'yoga'))).toEqual([])
+  })
+
+  it('leaves what you shared with your person, but not your name or private plans', async () => {
+    const { a, b, aId, bId } = await couple()
+    await b.sync(0, [
+      event('picnic', { title: 'Picnic', visibility: 'shared' }),
+      event('ring', { title: 'Ring', visibility: 'private' }),
+    ])
+    const seen = await a.sync(0)
+    // Even unlinked: with no one left to relink with, the space opens up again for them.
+    await b.request('/space/unlink', {})
+
+    expect((await b.request('/account/delete', {})).status).toBe(200)
+    const after = await a.sync(seen.version)
+    expect(after.records).toContainEqual({ kind: 'person', id: bId, deleted: true })
+    const all = await a.sync(0)
+    expect(all.records.find((r) => r.id === 'picnic')?.data?.title).toBe('Picnic')
+    expect(await db.select().from(schema.records).where(eq(schema.records.id, 'ring'))).toEqual([])
+    const [profile] = await db.select().from(schema.records).where(eq(schema.records.id, bId))
+    expect(profile?.data).toEqual({})
+    expect((await a.request('/space')).json).toMatchObject({
+      status: 'active',
+      members: [{ userId: aId, role: 'owner' }],
+    })
+  })
+
+  it('asks a protected account to sign in again first', async () => {
+    const phone = new Device()
+    const me = await phone.signIn()
+    await phone.request('/auth/email-otp/request-email-change', { newEmail: 'sol@example.com' })
+    await phone.request('/auth/email-otp/change-email', {
+      newEmail: 'sol@example.com',
+      otp: codeFor('sol@example.com'),
+    })
+    await db
+      .update(schema.session)
+      .set({ createdAt: sql`now() - interval '2 days'` })
+      .where(eq(schema.session.userId, me))
+
+    const res = await phone.request('/account/delete', {})
+    expect(res.status).toBe(403)
+    expect(res.json.error).toBe('SESSION_NOT_FRESH')
+    expect(await db.select().from(schema.user).where(eq(schema.user.id, me))).toHaveLength(1)
+  })
+})

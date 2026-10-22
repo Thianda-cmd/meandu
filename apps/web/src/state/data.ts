@@ -21,6 +21,15 @@ import type { List, ListItem, Memory, Person } from './types'
  */
 export type Mode = 'none' | 'demo' | 'synced'
 
+/** After one of you unlinked: who did, and who has asked to relink since. */
+export interface Paused {
+  by: string | null
+  wantsBack: string[]
+}
+
+const pausedFrom = (state: SpaceState): Paused | null =>
+  state.status === 'paused' ? { by: state.pausedBy, wantsBack: state.wantsBack } : null
+
 /** A change waiting to be sent. `seq` tells apart versions of the same change. */
 export interface OutboxEntry extends Mutation {
   seq: number
@@ -34,6 +43,8 @@ interface Persisted extends Content {
   cursor: number
   outbox: OutboxEntry[]
   seq: number
+  /** Set while the space is paused; the phone keeps its copy but shows none of it. */
+  paused: Paused | null
 }
 
 type Undo = () => void
@@ -46,6 +57,8 @@ interface DataState extends Persisted {
   /** Switches to a real space. `known` is what this phone already knows, until the first sync. */
   beginSynced: (state: SpaceState, known?: Partial<Content>) => void
   acknowledge: (sent: OutboxEntry[], response: SyncResponse) => void
+  /** What the server says about the space: paused or not. */
+  setSpace: (state: SpaceState) => void
   saveEvent: (event: CalendarEvent) => void
   deleteEvent: (id: string) => Undo
   addList: (title: string, emoji: string) => string
@@ -70,6 +83,7 @@ const initial = (): Persisted => ({
   cursor: 0,
   outbox: [],
   seq: 0,
+  paused: null,
 })
 
 const now = () => Temporal.Now.instant().toString()
@@ -146,7 +160,10 @@ export const useData = create<DataState>()(
             mode: 'synced',
             meId: state.userId,
             spaceId: state.spaceId,
+            paused: pausedFrom(state),
           }),
+
+        setSpace: (state) => set({ paused: pausedFrom(state) }),
 
         acknowledge: (sent, response) =>
           set((s) => {
@@ -267,6 +284,7 @@ export const useData = create<DataState>()(
         cursor: s.cursor,
         outbox: s.outbox,
         seq: s.seq,
+        paused: s.paused,
       }),
       onRehydrateStorage: () => () => {
         useData.setState({ hydrated: true })

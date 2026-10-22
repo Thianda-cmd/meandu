@@ -96,12 +96,24 @@ const BIG_BUTTON = {
   primary: 'bg-coral text-white shadow-soft',
   soft: 'bg-surface text-ink shadow-soft',
   plain: 'text-ink-2',
+  /** A firm yes to something that can be undone. */
+  ink: 'bg-ink text-canvas shadow-soft',
+  /** A yes to something that can't be undone. */
+  danger: 'bg-danger text-white shadow-soft',
+  /** The way to something that can't be undone, kept quiet. */
+  plainDanger: 'text-coral-ink',
 }
 
-/** A large, full-width button. While `busy` it shows a spinner and ignores presses. */
+/**
+ * A large, full-width button. While `busy` it shows a spinner and ignores presses.
+ * Colours and size come from `variant`, `compact` and `fit`: utilities in `className`
+ * don't reliably override the ones here, since the stylesheet's order decides.
+ */
 export function BigButton({
   busy = false,
   variant = 'primary',
+  compact = false,
+  fit = false,
   className,
   children,
   onPress,
@@ -109,6 +121,10 @@ export function BigButton({
 }: Omit<PressableProps, 'children'> & {
   busy?: boolean
   variant?: keyof typeof BIG_BUTTON
+  /** Shorter, for a secondary choice under the main one. */
+  compact?: boolean
+  /** As wide as its label instead of the full width. */
+  fit?: boolean
   children: ReactNode
 }) {
   return (
@@ -119,7 +135,9 @@ export function BigButton({
         if (!busy) onPress?.(event)
       }}
       className={cx(
-        'relative flex h-14 w-full items-center justify-center rounded-full text-headline font-bold',
+        'relative flex items-center justify-center rounded-full text-headline font-bold',
+        compact ? 'h-11' : 'h-14',
+        fit ? 'px-6' : 'w-full',
         BIG_BUTTON[variant],
         className,
       )}

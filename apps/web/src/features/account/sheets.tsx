@@ -2,7 +2,9 @@ import { EnvelopeSimple, Fingerprint, SignOut } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { passkeysSupported, signOut } from '../../api/auth'
+import { ApiError } from '../../api/client'
 import { useT } from '../../i18n'
+import { cx } from '../../lib/cx'
 import { haptics } from '../../platform'
 import { useAccount } from '../../state/account'
 import { useUi } from '../../state/ui'
@@ -219,42 +221,96 @@ export function ConfirmSheet() {
   )
 }
 
-export function SignOutSheet() {
+/**
+ * "Are you sure?": what happens, one big answer and a way out. Failures show below;
+ * a protected account that signed in too long ago confirms it's them first.
+ */
+export function AskSheet({
+  icon,
+  title,
+  hint,
+  confirm,
+  danger = false,
+  onConfirm,
+}: {
+  icon: ReactNode
+  title: string
+  hint: string
+  confirm: string
+  /** Can't be undone: the answer is red. */
+  danger?: boolean
+  onConfirm: () => Promise<void>
+}) {
   const t = useT()
   const close = useUi((s) => s.closeSheet)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const leave = async () => {
+  const go = async () => {
     setBusy(true)
+    setError(null)
     try {
-      await signOut()
-    } catch {
-      // Signed out on this phone either way; the session expires on its own.
+      await onConfirm()
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : 'server'
+      if (code === 'SESSION_NOT_FRESH') {
+        useUi.getState().openSheet({ type: 'confirm' })
+        return
+      }
+      haptics.warn()
+      setError(code)
+    } finally {
+      setBusy(false)
     }
-    haptics.warn()
-    startOver()
   }
 
   return (
     <>
-      <SheetHeader title={t.settings.signOut} onClose={close} />
+      <SheetHeader title="" onClose={close} />
       <SheetBody>
         <div className="flex flex-col items-center pt-2 text-center">
-          <span className="grid size-20 place-items-center rounded-full bg-surface-2 text-ink-2">
-            <SignOut size={36} weight="duotone" />
+          <span
+            className={cx(
+              'grid size-20 place-items-center rounded-full',
+              danger ? 'bg-coral-soft text-coral-ink' : 'bg-surface-2 text-ink-2',
+            )}
+          >
+            {icon}
           </span>
-          <p className="mt-5 font-display text-title font-bold">{t.settings.signOutTitle}</p>
-          <p className="mt-1 text-body text-ink-2">{t.settings.signOutHint}</p>
+          <p className="mt-5 text-balance font-display text-title font-bold">{title}</p>
+          <p className="mt-1 text-balance text-body text-ink-2">{hint}</p>
           <div className="mt-7 w-full space-y-2">
-            <BigButton busy={busy} onPress={leave} className="bg-coral-ink">
-              {t.settings.signOut}
+            <BigButton busy={busy} onPress={go} variant={danger ? 'danger' : 'ink'}>
+              {confirm}
             </BigButton>
             <BigButton variant="plain" onPress={close}>
               {t.common.cancel}
             </BigButton>
           </div>
+          <ErrorLine text={error && authError(t, error)} />
         </div>
       </SheetBody>
     </>
+  )
+}
+
+export function SignOutSheet() {
+  const t = useT()
+  return (
+    <AskSheet
+      icon={<SignOut size={36} weight="duotone" />}
+      title={t.settings.signOutTitle}
+      hint={t.settings.signOutHint}
+      confirm={t.settings.signOut}
+      onConfirm={async () => {
+        try {
+          await signOut()
+        } catch {
+          // Signed out on this phone either way; the session expires on its own.
+        }
+        haptics.warn()
+        startOver()
+      }}
+    />
   )
 }

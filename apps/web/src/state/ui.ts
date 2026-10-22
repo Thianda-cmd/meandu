@@ -16,6 +16,13 @@ export type SheetState =
   /** Sign in again before changing how a protected account signs in. */
   | { type: 'confirm' }
   | { type: 'signout' }
+  /** Pause the space for both of you. */
+  | { type: 'unlink' }
+  /** After unlinking: delete the space for both of you. */
+  | { type: 'deleteSpace' }
+  | { type: 'deleteAccount' }
+  /** The account card on its own (while paused there are no settings). */
+  | { type: 'account' }
 
 export interface Toast {
   id: number

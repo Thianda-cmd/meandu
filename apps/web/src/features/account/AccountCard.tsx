@@ -4,6 +4,7 @@ import {
   Plus,
   ShieldCheck,
   SignOut,
+  UserMinus,
   WarningCircle,
 } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
@@ -153,16 +154,26 @@ export function AccountCard() {
       </div>
       {flow.error && <ErrorLine text={authError(t, flow.error)} />}
 
-      {info.protected && (
+      <div className="mt-2 -mx-1 divide-y divide-line border-t border-line">
+        {info.protected && (
+          <Pressable
+            feedback="row"
+            onPress={() => openSheet({ type: 'signout' })}
+            className="flex min-h-12 w-full items-center gap-3 rounded-xl px-1 text-body font-semibold text-ink-2"
+          >
+            <SignOut size={20} className="shrink-0" />
+            {t.settings.signOut}
+          </Pressable>
+        )}
         <Pressable
           feedback="row"
-          onPress={() => openSheet({ type: 'signout' })}
-          className="mt-2 flex min-h-12 w-full items-center gap-3 rounded-xl px-1 text-body font-semibold text-ink-2"
+          onPress={() => openSheet({ type: 'deleteAccount' })}
+          className="flex min-h-12 w-full items-center gap-3 rounded-xl px-1 text-body font-semibold text-coral-ink"
         >
-          <SignOut size={20} className="shrink-0" />
-          {t.settings.signOut}
+          <UserMinus size={20} className="shrink-0" />
+          {t.space.deleteAccount}
         </Pressable>
-      )}
+      </div>
     </div>
   )
 }

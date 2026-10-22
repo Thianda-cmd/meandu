@@ -320,7 +320,7 @@ function SafeSteps({
                   {t.auth.useEmail}
                 </BigButton>
               )}
-              <BigButton variant="plain" className="h-11" onPress={onDone}>
+              <BigButton variant="plain" compact onPress={onDone}>
                 {t.invite.later}
               </BigButton>
             </div>
@@ -549,7 +549,7 @@ function Welcome({
         <BigButton haptic="tap" variant="soft" onPress={onCode}>
           {t.onboarding.haveCode}
         </BigButton>
-        <BigButton variant="plain" className="h-11" onPress={onLookAround}>
+        <BigButton variant="plain" compact onPress={onLookAround}>
           {t.onboarding.lookAround}
         </BigButton>
         <p className="text-center text-foot text-ink-3">{t.onboarding.age}</p>

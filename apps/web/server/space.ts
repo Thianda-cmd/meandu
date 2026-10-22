@@ -50,19 +50,78 @@ export async function spaceState(db: Db, userId: string): Promise<SpaceState | n
   const [space] = await db.select().from(spaces).where(eq(spaces.id, membership.spaceId))
   if (!space) return null
   const people = await db
-    .select({ userId: members.userId, role: members.role })
+    .select({ userId: members.userId, role: members.role, wantsBack: members.wantsBack })
     .from(members)
     .where(eq(members.spaceId, space.id))
     .orderBy(asc(members.joinedAt))
+  const paused = space.status === 'paused'
   return {
     spaceId: space.id,
     userId,
-    status: space.status === 'paused' ? 'paused' : 'active',
+    status: paused ? 'paused' : 'active',
     members: people.map((p) => ({
       userId: p.userId,
       role: p.role === 'owner' ? 'owner' : 'member',
     })),
+    pausedBy: paused ? space.pausedBy : null,
+    wantsBack: paused ? people.filter((p) => p.wantsBack).map((p) => p.userId) : [],
   }
+}
+
+/** The space you're in, or a 409 when there's none. */
+async function stateOf(db: Db, userId: string): Promise<SpaceState> {
+  const state = await spaceState(db, userId)
+  if (!state) throw new AppError(409, 'no-space')
+  return state
+}
+
+/** Pauses the space for both of you. Nothing is deleted; relinking brings it all back. */
+export async function unlink(db: Db, userId: string): Promise<SpaceState> {
+  const state = await stateOf(db, userId)
+  if (state.status === 'paused') return state
+  if (state.members.length < 2) throw new AppError(409, 'not-paired')
+  await db.transaction(async (tx) => {
+    await tx
+      .update(spaces)
+      .set({ status: 'paused', pausedBy: userId, pausedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(eq(spaces.id, state.spaceId))
+    await tx.update(members).set({ wantsBack: false }).where(eq(members.spaceId, state.spaceId))
+  })
+  return stateOf(db, userId)
+}
+
+/** You'd like to relink. Once both of you do, the space is back. */
+export async function relink(db: Db, userId: string): Promise<SpaceState> {
+  const state = await stateOf(db, userId)
+  if (state.status === 'active') return state
+  await db.transaction(async (tx) => {
+    // Locks the space, so two "yes"es at the same moment can't miss each other.
+    await tx.select().from(spaces).where(eq(spaces.id, state.spaceId)).for('update')
+    await tx.update(members).set({ wantsBack: true }).where(eq(members.userId, userId))
+    const people = await tx.select().from(members).where(eq(members.spaceId, state.spaceId))
+    if (people.every((p) => p.wantsBack)) await resume(tx, state.spaceId)
+  })
+  return stateOf(db, userId)
+}
+
+/** Back to normal after a pause. */
+export async function resume(tx: Db, spaceId: string): Promise<void> {
+  await tx
+    .update(spaces)
+    .set({ status: 'active', pausedBy: null, pausedAt: null, updatedAt: sql`now()` })
+    .where(eq(spaces.id, spaceId))
+  await tx.update(members).set({ wantsBack: false }).where(eq(members.spaceId, spaceId))
+}
+
+/**
+ * Deletes the space and everything in it, for both of you. Either of you may, once it's
+ * paused; a space you share and use together can't be deleted by one of you alone.
+ */
+export async function deleteSpace(db: Db, userId: string): Promise<void> {
+  const state = await stateOf(db, userId)
+  if (state.status === 'active' && state.members.length > 1) throw new AppError(409, 'paired')
+  // Members, invites and records go with it.
+  await db.delete(spaces).where(eq(spaces.id, state.spaceId))
 }
 
 export async function createSpace(
@@ -95,6 +154,8 @@ export async function createSpace(
 export async function inviteFor(db: Db, userId: string): Promise<InviteInfo> {
   const membership = await membershipOf(db, userId)
   if (!membership) throw new AppError(409, 'no-space')
+  const [space] = await db.select().from(spaces).where(eq(spaces.id, membership.spaceId))
+  if (space?.status === 'paused') throw new AppError(409, 'paused')
   const people = await db.select().from(members).where(eq(members.spaceId, membership.spaceId))
   if (people.length >= 2) throw new AppError(409, 'full')
 

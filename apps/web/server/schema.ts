@@ -113,8 +113,11 @@ export const spaces = pgTable('spaces', {
   id: uuid('id').primaryKey(),
   /** Bumped (under a row lock) by every write, so changes are numbered in commit order. */
   version: bigint('version', { mode: 'number' }).notNull().default(0),
-  /** `paused` after unlinking; restored by relinking. */
+  /** `paused` after unlinking; active again once both relink. */
   status: text('status').notNull().default('active'),
+  /** Who unlinked, and when. */
+  pausedBy: text('paused_by'),
+  pausedAt: timestamp('paused_at', { withTimezone: true }),
   plan: text('plan').notNull().default('free'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -131,6 +134,8 @@ export const members = pgTable(
       .notNull()
       .references(() => spaces.id, { onDelete: 'cascade' }),
     role: text('role').notNull().default('member'),
+    /** While the space is paused: this person wants to relink. */
+    wantsBack: boolean('wants_back').notNull().default(false),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('members_space_idx').on(t.spaceId)],

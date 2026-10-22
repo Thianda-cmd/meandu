@@ -182,6 +182,16 @@ function PartnerCard() {
           {partner ? partner.name : t.settings.pending}
         </p>
       </div>
+      {partner && mode === 'synced' && (
+        <Pressable
+          feedback="none"
+          haptic="tap"
+          onPress={() => openSheet({ type: 'unlink' })}
+          className="mt-3 rounded-full py-1 text-sub font-semibold text-ink-3"
+        >
+          {t.space.unlink}
+        </Pressable>
+      )}
       {!partner && mode === 'synced' && (
         <div className="mt-4 flex gap-2">
           <Pressable

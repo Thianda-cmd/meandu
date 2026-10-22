@@ -1,23 +1,27 @@
-import type { AccountInfo } from '@meandu/core'
-import { asc, eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { ZodError } from 'zod'
-import { type Auth, isRealEmail } from './auth.js'
+import { accountInfo, deleteAccount } from './account.js'
+import type { Auth } from './auth.js'
 import type { Db } from './db.js'
 import { AppError } from './errors.js'
-import { passkey, user } from './schema.js'
 import {
   createSpace,
   createSpaceInput,
+  deleteSpace,
   inviteFor,
   joinInput,
   joinSpace,
+  relink,
   spaceState,
+  unlink,
 } from './space.js'
 import { applyMutations, pull, syncRequest } from './sync.js'
 
-type Env = { Variables: { userId: string } }
+type Env = { Variables: { userId: string; signedInAt: Date } }
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 /** The whole API. Runs as one Vercel function in production and as a local server in dev. */
 export function createApp({
@@ -66,6 +70,19 @@ export function createApp({
     const session = await auth.api.getSession({ headers: c.req.raw.headers })
     if (!session) throw new AppError(401, 'signed-out')
     c.set('userId', session.user.id)
+    c.set('signedInAt', new Date(session.session.createdAt))
+    await next()
+  })
+
+  /**
+   * Deleting things for good: an account others could sign in to needs a sign-in from the
+   * last day, like changing how it signs in. A device-only account has its phone and nothing else.
+   */
+  const recentSignIn = createMiddleware<Env>(async (c, next) => {
+    const info = await accountInfo(db, c.get('userId'))
+    if (info.protected && Date.now() - c.get('signedInAt').getTime() > DAY_MS) {
+      throw new AppError(403, 'SESSION_NOT_FRESH')
+    }
     await next()
   })
 
@@ -73,21 +90,17 @@ export function createApp({
   app.get('/config', (c) => c.json({ email: emailSignIn }))
 
   /** How you can get back into your account: a confirmed email and your passkeys. */
-  app.get('/account', signedIn, async (c) => {
-    const userId = c.get('userId')
-    const [me] = await db.select().from(user).where(eq(user.id, userId))
-    const keys = await db
-      .select({ id: passkey.id, name: passkey.name, createdAt: passkey.createdAt })
-      .from(passkey)
-      .where(eq(passkey.userId, userId))
-      .orderBy(asc(passkey.createdAt))
-    const email = me && isRealEmail(me.email, me.emailVerified) ? me.email : null
-    const info: AccountInfo = {
-      email,
-      passkeys: keys.map((k) => ({ ...k, createdAt: k.createdAt.toISOString() })),
-      protected: Boolean(email || keys.length),
-    }
-    return c.json(info)
+  app.get('/account', signedIn, async (c) => c.json(await accountInfo(db, c.get('userId'))))
+
+  app.post('/account/delete', sameOrigin, signedIn, recentSignIn, async (c) => {
+    await deleteAccount(db, c.get('userId'))
+    const res = c.json({ ok: true })
+    // The session is gone with the account; this also clears its cookie on the phone.
+    try {
+      const out = await auth.api.signOut({ headers: c.req.raw.headers, asResponse: true })
+      for (const cookie of out.headers.getSetCookie()) res.headers.append('set-cookie', cookie)
+    } catch {}
+    return res
   })
 
   app.get('/space', signedIn, async (c) => {
@@ -109,11 +122,26 @@ export function createApp({
     return c.json(await joinSpace(db, c.get('userId'), input))
   })
 
+  app.post('/space/unlink', sameOrigin, signedIn, async (c) => {
+    return c.json(await unlink(db, c.get('userId')))
+  })
+
+  app.post('/space/relink', sameOrigin, signedIn, async (c) => {
+    return c.json(await relink(db, c.get('userId')))
+  })
+
+  app.post('/space/delete', sameOrigin, signedIn, recentSignIn, async (c) => {
+    await deleteSpace(db, c.get('userId'))
+    return c.json({ ok: true })
+  })
+
   app.post('/sync', sameOrigin, signedIn, async (c) => {
     const userId = c.get('userId')
     const body = syncRequest.parse(await c.req.json())
     const state = await spaceState(db, userId)
     if (!state) throw new AppError(409, 'no-space')
+    // While unlinked nothing comes or goes; the phone keeps what it has until you relink.
+    if (state.status === 'paused') throw new AppError(409, 'paused')
     if (body.mutations.length) {
       await db.transaction((tx) => applyMutations(tx, userId, state.spaceId, body.mutations))
     }

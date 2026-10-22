@@ -10,6 +10,7 @@ import { JoinSheet } from './invite/JoinSheet'
 import { ItemSheet } from './lists/ItemSheet'
 import { ListSheet } from './lists/ListSheet'
 import { MemorySheet } from './memories/MemorySheet'
+import { AccountSheet, DeleteAccountSheet, DeleteSpaceSheet, UnlinkSheet } from './space/sheets'
 
 /** One sheet per kind, so switching from "+" to a form animates one out and the next in. */
 export function SheetHost() {
@@ -65,6 +66,18 @@ export function SheetHost() {
       </Sheet>
       <Sheet open={sheet?.type === 'signout'} onClose={close} label={t.settings.signOut}>
         <SignOutSheet />
+      </Sheet>
+      <Sheet open={sheet?.type === 'unlink'} onClose={close} label={t.space.unlink}>
+        <UnlinkSheet />
+      </Sheet>
+      <Sheet open={sheet?.type === 'deleteSpace'} onClose={close} label={t.space.deleteEverything}>
+        <DeleteSpaceSheet />
+      </Sheet>
+      <Sheet open={sheet?.type === 'deleteAccount'} onClose={close} label={t.space.deleteAccount}>
+        <DeleteAccountSheet />
+      </Sheet>
+      <Sheet open={sheet?.type === 'account'} onClose={close} label={t.settings.account}>
+        <AccountSheet />
       </Sheet>
     </>
   )

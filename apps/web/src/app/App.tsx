@@ -1,7 +1,9 @@
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useEffect, useLayoutEffect } from 'react'
+import { startOver } from '../features/onboarding/actions'
 import { Onboarding } from '../features/onboarding/Onboarding'
 import { SheetHost } from '../features/SheetHost'
+import { PausedView } from '../features/space/PausedView'
 import { useT } from '../i18n'
 import { forgetPhotosExcept } from '../lib/photos'
 import { startHistorySync } from '../navigation/history'
@@ -10,7 +12,7 @@ import { haptics } from '../platform'
 import { useAccount } from '../state/account'
 import { useData } from '../state/data'
 import { useUi } from '../state/ui'
-import { startSync } from '../sync/engine'
+import { startSync, useSync } from '../sync/engine'
 import { HeartPop } from '../ui/HeartPop'
 import { ToastHost } from '../ui/Toast'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -32,6 +34,7 @@ export function App() {
   useKeyboardInset()
   const hydrated = useData((s) => s.hydrated)
   const mode = useData((s) => s.mode)
+  const paused = useData((s) => s.mode === 'synced' && s.paused !== null)
   const joinCode = useUi((s) => s.joinCode)
   const onboardingOpen = useUi((s) => s.onboardingOpen)
 
@@ -50,6 +53,7 @@ export function App() {
   }, [mode])
 
   useTidyPhotos(hydrated)
+  useSpaceGone()
 
   // The launch screen stays up while the saved data loads (a few milliseconds).
   if (!hydrated) return null
@@ -61,9 +65,16 @@ export function App() {
     <MotionConfig reducedMotion="user">
       <ErrorBoundary>
         <AnimatePresence initial={false}>
-          {onboarding ? <Onboarding key="onboarding" /> : <Main key="main" />}
+          {onboarding ? (
+            <Onboarding key="onboarding" />
+          ) : paused ? (
+            <PausedView key="paused" />
+          ) : (
+            <Main key="main" />
+          )}
         </AnimatePresence>
-        <ToastHost />
+        {!onboarding && <SheetHost />}
+        <ToastHost placement={onboarding || paused ? 'top' : 'bottom'} />
         <HeartPop />
       </ErrorBoundary>
       <UpdateWatcher />
@@ -89,7 +100,6 @@ function Main() {
         <TabNavigator />
         <TabBar />
       </div>
-      <SheetHost />
     </motion.div>
   )
 }
@@ -110,6 +120,20 @@ function useTidyPhotos(hydrated: boolean) {
     }, 5000)
     return () => window.clearTimeout(timer)
   }, [hydrated])
+}
+
+/** Your person deleted your space after unlinking: back to the start, gently. */
+function useSpaceGone() {
+  const t = useT()
+  const status = useSync((s) => s.status)
+  useEffect(() => {
+    if (status !== 'gone') return
+    useSync.setState({ status: 'idle' })
+    // Not when this phone deleted it itself; that already started over.
+    if (useData.getState().mode !== 'synced') return
+    startOver()
+    useUi.getState().showToast(t.space.gone)
+  }, [status, t])
 }
 
 /** A little party when your person joins. */

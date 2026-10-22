@@ -4,8 +4,11 @@ import { useUi } from '../state/ui'
 import { SNAPPY } from './motion'
 import { Pressable } from './Pressable'
 
-/** A small pill above the tab bar, usually with "Undo". */
-export function ToastHost() {
+/**
+ * A small pill, usually with "Undo": above the tab bar, or at the top on screens without one,
+ * where the big buttons sit at the bottom.
+ */
+export function ToastHost({ placement = 'bottom' }: { placement?: 'top' | 'bottom' }) {
   const toast = useUi((s) => s.toast)
   const hide = useUi((s) => s.hideToast)
 
@@ -18,16 +21,20 @@ export function ToastHost() {
   return (
     <div
       className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4"
-      style={{ bottom: 'calc(var(--safe-bottom) + 6rem)' }}
+      style={
+        placement === 'top'
+          ? { top: 'calc(var(--safe-top) + var(--nav-h) + 0.5rem)' }
+          : { bottom: 'calc(var(--safe-bottom) + 6rem)' }
+      }
     >
       <AnimatePresence>
         {toast && (
           <motion.div
             key={toast.id}
             role="status"
-            initial={{ y: 24, opacity: 0, scale: 0.94 }}
+            initial={{ y: placement === 'top' ? -24 : 24, opacity: 0, scale: 0.94 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 12, opacity: 0, scale: 0.97 }}
+            exit={{ y: placement === 'top' ? -12 : 12, opacity: 0, scale: 0.97 }}
             transition={SNAPPY}
             className="pointer-events-auto flex items-center gap-4 rounded-full bg-ink py-2.5 pl-5 pr-2 text-canvas shadow-float"
           >

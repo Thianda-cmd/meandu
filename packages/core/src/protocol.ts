@@ -43,8 +43,13 @@ export interface SpaceMember {
 export interface SpaceState {
   spaceId: string
   userId: string
+  /** `paused` after one of you unlinked. Nothing is lost; it's active again once both relink. */
   status: 'active' | 'paused'
   members: SpaceMember[]
+  /** Who unlinked. */
+  pausedBy: string | null
+  /** While paused: who has asked to relink. */
+  wantsBack: string[]
 }
 
 export interface InviteInfo {

@@ -1,8 +1,10 @@
+import type { SyncResponse } from '@meandu/core'
 import { create } from 'zustand'
 import { ApiError, api } from '../api/client'
 import { useData } from '../state/data'
 
-export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'signed-out' | 'error'
+/** `gone`: the space was deleted (by your person, after unlinking). */
+export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'signed-out' | 'gone' | 'error'
 
 export const useSync = create<{ status: SyncStatus; lastSyncedAt: number | null }>(() => ({
   status: 'idle',
@@ -24,16 +26,31 @@ let running: Promise<void> | null = null
 let again = false
 let timer = 0
 
+/** Asks whether a paused space is back. True once it is. */
+async function checkPause(): Promise<boolean> {
+  const space = await api.space()
+  useData.getState().setSpace(space)
+  return space.status === 'active'
+}
+
 async function run(): Promise<void> {
+  if (useData.getState().paused && !(await checkPause())) return
   for (let round = 0; round < 20; round++) {
     const state = useData.getState()
     if (state.mode !== 'synced') return
     const batch = state.outbox.slice(0, BATCH)
-    const response = await api.sync({
-      since: state.cursor,
-      spaceId: state.spaceId,
-      mutations: batch.map(({ seq: _seq, ...mutation }) => mutation),
-    })
+    let response: SyncResponse
+    try {
+      response = await api.sync({
+        since: state.cursor,
+        spaceId: state.spaceId,
+        mutations: batch.map(({ seq: _seq, ...mutation }) => mutation),
+      })
+    } catch (error) {
+      // Your person just unlinked. Changes made meanwhile wait for a relink.
+      if (error instanceof ApiError && error.code === 'paused' && !(await checkPause())) return
+      throw error
+    }
     useData.getState().acknowledge(batch, response)
     if (!response.more && useData.getState().outbox.length === 0) return
   }
@@ -57,7 +74,12 @@ export function syncNow(): Promise<void> {
     .catch((error: unknown) => {
       const code = error instanceof ApiError ? error.code : 'server'
       useSync.setState({
-        status: code === 'offline' ? 'offline' : code === 'signed-out' ? 'signed-out' : 'error',
+        status:
+          code === 'offline' || code === 'signed-out'
+            ? code
+            : code === 'no-space'
+              ? 'gone'
+              : 'error',
       })
     })
     .finally(() => {
@@ -91,7 +113,8 @@ export function startSync(): () => void {
     void syncNow()
     interval = window.setInterval(() => {
       // A signed-out phone can't sync; it waits for the next launch instead of retrying.
-      if (useSync.getState().status !== 'signed-out') void syncNow()
+      const { status } = useSync.getState()
+      if (status !== 'signed-out' && status !== 'gone') void syncNow()
     }, POLL_MS)
   }
 
