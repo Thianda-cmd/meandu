@@ -1,6 +1,7 @@
 import { useT } from '../i18n'
 import { useUi } from '../state/ui'
 import { Sheet } from '../ui/Sheet'
+import { ConfirmSheet, SecureSheet, SignOutSheet } from './account/sheets'
 import { EventSheet } from './calendar/EventSheet'
 import { CreateSheet } from './create/CreateSheet'
 import { InstallSheet } from './install/InstallSheet'
@@ -39,6 +40,15 @@ export function SheetHost() {
       </Sheet>
       <Sheet open={sheet?.type === 'join'} onClose={close} label={t.onboarding.codeTitle}>
         {sheet?.type === 'join' && <JoinSheet code={sheet.code} />}
+      </Sheet>
+      <Sheet open={sheet?.type === 'secure'} onClose={close} label={t.auth.safeTitle}>
+        {sheet?.type === 'secure' && <SecureSheet start={sheet.start} />}
+      </Sheet>
+      <Sheet open={sheet?.type === 'confirm'} onClose={close} label={t.auth.confirmTitle}>
+        <ConfirmSheet />
+      </Sheet>
+      <Sheet open={sheet?.type === 'signout'} onClose={close} label={t.settings.signOut}>
+        <SignOutSheet />
       </Sheet>
     </>
   )

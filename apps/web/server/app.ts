@@ -1,10 +1,12 @@
-import { sql } from 'drizzle-orm'
+import type { AccountInfo } from '@meandu/core'
+import { asc, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { ZodError } from 'zod'
-import type { Auth } from './auth.js'
+import { type Auth, isRealEmail } from './auth.js'
 import type { Db } from './db.js'
 import { AppError } from './errors.js'
+import { passkey, user } from './schema.js'
 import {
   createSpace,
   createSpaceInput,
@@ -18,7 +20,16 @@ import { applyMutations, pull, syncRequest } from './sync.js'
 type Env = { Variables: { userId: string } }
 
 /** The whole API. Runs as one Vercel function in production and as a local server in dev. */
-export function createApp({ db, auth }: { db: Db; auth: Auth }) {
+export function createApp({
+  db,
+  auth,
+  emailSignIn = false,
+}: {
+  db: Db
+  auth: Auth
+  /** Whether codes can be emailed (an email service is set up). */
+  emailSignIn?: boolean
+}) {
   const app = new Hono<Env>().basePath('/api')
 
   app.onError((error, c) => {
@@ -56,6 +67,27 @@ export function createApp({ db, auth }: { db: Db; auth: Auth }) {
     if (!session) throw new AppError(401, 'signed-out')
     c.set('userId', session.user.id)
     await next()
+  })
+
+  /** What this server can do, for screens shown before signing in. */
+  app.get('/config', (c) => c.json({ email: emailSignIn }))
+
+  /** How you can get back into your account: a confirmed email and your passkeys. */
+  app.get('/account', signedIn, async (c) => {
+    const userId = c.get('userId')
+    const [me] = await db.select().from(user).where(eq(user.id, userId))
+    const keys = await db
+      .select({ id: passkey.id, name: passkey.name, createdAt: passkey.createdAt })
+      .from(passkey)
+      .where(eq(passkey.userId, userId))
+      .orderBy(asc(passkey.createdAt))
+    const email = me && isRealEmail(me.email, me.emailVerified) ? me.email : null
+    const info: AccountInfo = {
+      email,
+      passkeys: keys.map((k) => ({ ...k, createdAt: k.createdAt.toISOString() })),
+      protected: Boolean(email || keys.length),
+    }
+    return c.json(info)
   })
 
   app.get('/space', signedIn, async (c) => {

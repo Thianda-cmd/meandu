@@ -1,28 +1,37 @@
 import { dayCount, Temporal } from '@meandu/core'
-import { CaretLeft, Heart } from '@phosphor-icons/react'
+import { CaretLeft, EnvelopeSimple, Fingerprint, Heart } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { ApiError } from '../../api/client'
+import { passkeysSupported } from '../../api/auth'
+import { ApiError, api } from '../../api/client'
 import { useLocale, useT } from '../../i18n'
 import { todayDate } from '../../lib/time'
 import { haptics } from '../../platform'
+import { useAccount } from '../../state/account'
 import { useData } from '../../state/data'
 import { useSettings } from '../../state/settings'
 import type { Tone } from '../../state/types'
 import { useUi } from '../../state/ui'
-import { Avatar, PendingAvatar } from '../../ui/Avatar'
+import { syncNow } from '../../sync/engine'
+import { Avatar, CoupleAvatars, PendingAvatar } from '../../ui/Avatar'
+import { CodeInput } from '../../ui/CodeInput'
 import { Segmented } from '../../ui/controls'
 import { AnimatedLogo } from '../../ui/Logo'
 import { STACK_SPRING } from '../../ui/motion'
-import { IconButton } from '../../ui/Pressable'
+import { IconButton, Pressable } from '../../ui/Pressable'
 import { NativeDateInput } from '../../ui/pickers'
-import { BigButton } from '../../ui/states'
+import { BigButton, ErrorLine } from '../../ui/states'
 import { TonePicker } from '../../ui/TonePicker'
-import { CodeInput } from '../invite/CodeInput'
+import { useSecureFlow, useSignInFlow } from '../account/flows'
+import { DoneMark, KeyGlyph, OrLine } from '../account/parts'
+import { CodeStep, EmailStep } from '../account/sheets'
 import { createSpace, joinSpace } from './actions'
 
-type Step = 'welcome' | 'you' | 'since' | 'code'
+type Step = 'welcome' | 'you' | 'since' | 'code' | 'safe' | 'signin'
 type Path = 'create' | 'join'
+
+/** A step inside a sub-flow takes over the back button while it has somewhere to go back to. */
+type BackHandler = { current: (() => boolean) | null }
 
 const slide = {
   enter: (direction: number) => ({ x: `${direction * 30}%`, opacity: 0 }),
@@ -44,17 +53,27 @@ export function Onboarding() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shake, setShake] = useState(0)
+  const [subStep, setSubStep] = useState('')
+  const subBack: BackHandler = useRef(null)
+  const emailSignIn = useAccount((s) => s.emailSignIn)
+  const canSecure = passkeysSupported() || emailSignIn
 
   const go = (next: Step, dir: 1 | -1 = 1) => {
     setDirection(dir)
     setError(null)
+    setSubStep('')
+    subBack.current = null
     setStep(next)
   }
   const back = () => {
+    if (subBack.current?.()) return
     if (step === 'since' || step === 'code') go('you', -1)
-    else if (step === 'you') go('welcome', -1)
+    else if (step === 'you' || step === 'signin') go('welcome', -1)
   }
-  useSystemBack(step !== 'welcome', step, back)
+  // Once the space exists there's no going back, only on to the app.
+  const canGoBack =
+    step !== 'welcome' && (step !== 'safe' || (subStep !== 'choose' && subStep !== 'done'))
+  useSystemBack(canGoBack, `${step}:${subStep}`, back)
 
   const start = (next: Path) => {
     setPath(next)
@@ -68,35 +87,40 @@ export function Onboarding() {
     setShake((n) => n + 1)
   }
 
-  const create = async () => {
+  /** Into the app: the invite comes up for a new space, a little party for joining one. */
+  const finish = () => {
+    useUi.getState().setOnboardingOpen(false)
+    if (path === 'create') {
+      window.setTimeout(() => useUi.getState().openSheet({ type: 'invite' }), 700)
+    } else {
+      useUi.getState().showToast(t.onboarding.joined)
+      useUi.getState().celebrate()
+    }
+  }
+
+  /** Creates or joins the space, then offers to keep it safe before going in. */
+  const enterSpace = async (action: () => Promise<void>) => {
     setBusy(true)
     setError(null)
+    useUi.getState().setOnboardingOpen(true)
     try {
-      await createSpace({ name: name.trim(), tone }, since)
+      await action()
       haptics.success()
-      // The app takes over now; the invite comes up once it's in place.
-      window.setTimeout(() => useUi.getState().openSheet({ type: 'invite' }), 700)
+      if (canSecure) go('safe')
+      else finish()
     } catch (e) {
+      useUi.getState().setOnboardingOpen(false)
       fail(e)
     } finally {
       setBusy(false)
     }
   }
 
+  const create = () => enterSpace(() => createSpace({ name: name.trim(), tone }, since))
+
   const join = async (value = code) => {
     if (value.length !== 6 || busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      await joinSpace(value, { name: name.trim(), tone })
-      haptics.success()
-      useUi.getState().showToast(t.onboarding.joined)
-      useUi.getState().celebrate()
-    } catch (e) {
-      fail(e)
-    } finally {
-      setBusy(false)
-    }
+    await enterSpace(() => joinSpace(value, { name: name.trim(), tone }))
   }
 
   const errorText = error && (t.onboarding.errors[error] ?? t.onboarding.errors.server)
@@ -122,6 +146,7 @@ export function Onboarding() {
             <Welcome
               onStart={() => start('create')}
               onCode={() => start('join')}
+              onSignIn={canSecure ? () => go('signin') : undefined}
               onLookAround={() => {
                 useUi.getState().setJoinCode(null)
                 useData.getState().startDemo(useSettings.getState().lang)
@@ -210,19 +235,254 @@ export function Onboarding() {
               <ErrorLine text={errorText} />
             </StepLayout>
           )}
+          {step === 'safe' && (
+            <SafeSteps onDone={finish} back={subBack} onStepChange={setSubStep} />
+          )}
+          {step === 'signin' && (
+            <SignInSteps onBack={back} back={subBack} onStepChange={setSubStep} />
+          )}
         </motion.div>
       </AnimatePresence>
     </motion.div>
   )
 }
 
+const SUB_STEPS = ['choose', 'email', 'code', 'done']
+
+/** Sub-steps slide like the main ones: deeper ones from the right, back from the left. */
+function SubSteps({ step, children }: { step: string; children: ReactNode }) {
+  const previous = useRef(step)
+  const direction = useRef(1)
+  if (previous.current !== step) {
+    direction.current = SUB_STEPS.indexOf(step) >= SUB_STEPS.indexOf(previous.current) ? 1 : -1
+    previous.current = step
+  }
+  return (
+    <AnimatePresence initial={false} custom={direction.current}>
+      <motion.div
+        key={step}
+        custom={direction.current}
+        variants={slide}
+        initial="enter"
+        animate="center"
+        exit="exit"
+        transition={STACK_SPRING}
+        className="absolute inset-0"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+/** Right after the space exists: add a passkey or an email, or do it later. */
+function SafeSteps({
+  onDone,
+  back,
+  onStepChange,
+}: {
+  onDone: () => void
+  back: BackHandler
+  onStepChange: (step: string) => void
+}) {
+  const t = useT()
+  const emailSignIn = useAccount((s) => s.emailSignIn)
+  const flow = useSecureFlow(onDone)
+  const canPasskey = passkeysSupported()
+
+  useEffect(() => onStepChange(flow.step), [flow.step, onStepChange])
+  back.current = () => {
+    if (flow.step === 'email') flow.setStep('choose')
+    else if (flow.step === 'code') flow.setStep('email')
+    else return false
+    return true
+  }
+
+  return (
+    <SubSteps step={flow.step}>
+      {flow.step === 'choose' && (
+        <StepLayout
+          title={t.auth.safeTitle}
+          footer={
+            <div className="space-y-3">
+              {canPasskey && (
+                <BigButton busy={flow.busy === 'passkey'} onPress={flow.passkey}>
+                  <Fingerprint size={22} weight="bold" />
+                  {t.auth.usePasskey}
+                </BigButton>
+              )}
+              {emailSignIn && (
+                <BigButton
+                  variant={canPasskey ? 'soft' : 'primary'}
+                  onPress={() => flow.setStep('email')}
+                >
+                  <EnvelopeSimple size={22} weight="bold" />
+                  {t.auth.useEmail}
+                </BigButton>
+              )}
+              <BigButton variant="plain" className="h-11" onPress={onDone}>
+                {t.invite.later}
+              </BigButton>
+            </div>
+          }
+        >
+          <div className="flex flex-col items-center pt-2 text-center">
+            <CoupleAvatars size={44} />
+            <div className="mt-8">
+              <KeyGlyph size={120} />
+            </div>
+            <p className="mt-6 text-title text-ink-2">{t.auth.safeHint}</p>
+            {canPasskey && <p className="mt-2 text-sub text-ink-3">{t.auth.passkeyHint}</p>}
+            <ErrorLine text={flow.error && (t.auth.errors[flow.error] ?? t.auth.errors.server)} />
+          </div>
+        </StepLayout>
+      )}
+      {flow.step === 'email' && (
+        <StepLayout
+          title={t.auth.emailTitle}
+          onBack={() => flow.setStep('choose')}
+          footer={
+            <BigButton
+              busy={flow.busy === 'email'}
+              isDisabled={!flow.email.includes('@')}
+              onPress={flow.send}
+            >
+              {t.auth.sendCode}
+            </BigButton>
+          }
+        >
+          <div className="pt-6">
+            <EmailStep flow={flow} />
+          </div>
+        </StepLayout>
+      )}
+      {flow.step === 'code' && (
+        <StepLayout
+          title={t.auth.checkEmail}
+          onBack={() => flow.setStep('email')}
+          footer={
+            <BigButton
+              busy={flow.busy === 'code'}
+              isDisabled={flow.code.length !== 6}
+              onPress={() => flow.confirm()}
+            >
+              {t.auth.confirm}
+            </BigButton>
+          }
+        >
+          <CodeStep flow={flow} />
+        </StepLayout>
+      )}
+      {flow.step === 'done' && (
+        <div className="flex h-full items-center justify-center">
+          <DoneMark label={t.auth.done} />
+        </div>
+      )}
+    </SubSteps>
+  )
+}
+
+/** Back on a new phone: a passkey, or a code by email, and everything comes back. */
+function SignInSteps({
+  onBack,
+  back,
+  onStepChange,
+}: {
+  onBack: () => void
+  back: BackHandler
+  onStepChange: (step: string) => void
+}) {
+  const t = useT()
+  const emailSignIn = useAccount((s) => s.emailSignIn)
+  const canPasskey = passkeysSupported()
+
+  const enter = async () => {
+    // Throws "no-space" for an account that isn't in a space (yet); shown on this screen.
+    const state = await api.space()
+    haptics.success()
+    useData.getState().beginSynced(state)
+    void useAccount.getState().load()
+    void syncNow()
+    useUi.getState().showToast(t.auth.welcomeBack)
+  }
+  const flow = useSignInFlow(enter, { autofill: emailSignIn })
+
+  useEffect(() => onStepChange(flow.step), [flow.step, onStepChange])
+  back.current = () => {
+    if (flow.step !== 'code') return false
+    flow.setStep('choose')
+    return true
+  }
+
+  return (
+    <SubSteps step={flow.step}>
+      {flow.step === 'choose' ? (
+        <StepLayout
+          title={t.auth.welcomeBack}
+          onBack={onBack}
+          footer={
+            emailSignIn && (
+              <BigButton
+                variant={canPasskey ? 'soft' : 'primary'}
+                busy={flow.busy === 'email'}
+                isDisabled={!flow.email.includes('@')}
+                onPress={flow.send}
+              >
+                {t.auth.sendCode}
+              </BigButton>
+            )
+          }
+        >
+          <div className="flex flex-col items-center pt-4">
+            <AnimatedLogo size={88} />
+            {canPasskey && (
+              <BigButton busy={flow.busy === 'passkey'} onPress={flow.passkey} className="mt-8">
+                <Fingerprint size={22} weight="bold" />
+                {t.auth.withPasskey}
+              </BigButton>
+            )}
+            {emailSignIn && (
+              <div className="mt-6 w-full space-y-4">
+                {canPasskey && <OrLine label={t.auth.or} />}
+                <EmailStep flow={flow} forSignIn />
+              </div>
+            )}
+            {!emailSignIn && (
+              <ErrorLine text={flow.error && (t.auth.errors[flow.error] ?? t.auth.errors.server)} />
+            )}
+          </div>
+        </StepLayout>
+      ) : (
+        <StepLayout
+          title={t.auth.checkEmail}
+          onBack={() => flow.setStep('choose')}
+          footer={
+            <BigButton
+              busy={flow.busy === 'code'}
+              isDisabled={flow.code.length !== 6}
+              onPress={() => flow.confirm()}
+            >
+              {t.auth.confirm}
+            </BigButton>
+          }
+        >
+          <CodeStep flow={flow} />
+        </StepLayout>
+      )}
+    </SubSteps>
+  )
+}
+
 function Welcome({
   onStart,
   onCode,
+  onSignIn,
   onLookAround,
 }: {
   onStart: () => void
   onCode: () => void
+  /** Missing when there's no way to sign in on this device. */
+  onSignIn?: () => void
   onLookAround: () => void
 }) {
   const t = useT()
@@ -232,9 +492,20 @@ function Welcome({
   return (
     <div className="welcome-glow flex h-full flex-col">
       <div
-        className="flex justify-end px-4"
+        className="flex items-center justify-between px-4"
         style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)' }}
       >
+        {onSignIn ? (
+          <Pressable
+            haptic="tap"
+            onPress={onSignIn}
+            className="rounded-full px-3 py-1.5 text-headline font-semibold text-ink-2"
+          >
+            {t.auth.signIn}
+          </Pressable>
+        ) : (
+          <span />
+        )}
         <Segmented
           label={t.settings.language}
           value={lang}
@@ -295,7 +566,8 @@ function StepLayout({
   children,
 }: {
   title: string
-  onBack: () => void
+  /** Missing when there's nothing to go back to. */
+  onBack?: () => void
   footer: ReactNode
   children: ReactNode
 }) {
@@ -303,9 +575,11 @@ function StepLayout({
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-(--nav-h) items-center px-3" style={{ marginTop: 'var(--safe-top)' }}>
-        <IconButton label={t.common.back} onPress={onBack}>
-          <CaretLeft size={20} weight="bold" />
-        </IconButton>
+        {onBack && (
+          <IconButton label={t.common.back} onPress={onBack}>
+            <CaretLeft size={20} weight="bold" />
+          </IconButton>
+        )}
       </div>
       <div className="scroll-y mx-auto w-full max-w-md flex-1 px-6 pt-4">
         <h1 className="text-balance pb-4 text-center font-display text-large font-extrabold tracking-tight">
@@ -320,14 +594,6 @@ function StepLayout({
         {footer}
       </div>
     </div>
-  )
-}
-
-function ErrorLine({ text }: { text: string | null | undefined }) {
-  return (
-    <p role="alert" className="min-h-6 pb-2 pt-3 text-center text-sub font-semibold text-coral-ink">
-      {text}
-    </p>
   )
 }
 
@@ -389,7 +655,7 @@ function SincePicker({
  * Android's back button and the browser's back go one step back instead of leaving.
  * One history entry is kept in front of us while there's a step to go back to.
  */
-function useSystemBack(active: boolean, step: Step, onBack: () => void) {
+function useSystemBack(active: boolean, step: string, onBack: () => void) {
   const handler = useRef(onBack)
   handler.current = onBack
   const guarded = useRef(false)

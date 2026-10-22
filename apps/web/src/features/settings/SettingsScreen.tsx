@@ -21,6 +21,7 @@ import { DatePicker } from '../../ui/pickers'
 import { Screen } from '../../ui/Screen'
 import { Spinner } from '../../ui/states'
 import { TonePicker } from '../../ui/TonePicker'
+import { AccountCard } from '../account/AccountCard'
 import { startOver } from '../onboarding/actions'
 
 export function SettingsScreen() {
@@ -54,6 +55,7 @@ export function SettingsScreen() {
 
         <MeCard />
         <PartnerCard />
+        {mode === 'synced' && <AccountCard />}
 
         <Group>
           <Row

@@ -8,14 +8,24 @@ import {
   previousMilestone,
   Temporal,
 } from '@meandu/core'
-import { CalendarPlus, CloudSlash, Export, Heart, WarningCircle, X } from '@phosphor-icons/react'
+import {
+  CalendarPlus,
+  CloudSlash,
+  Export,
+  Fingerprint,
+  Heart,
+  WarningCircle,
+  X,
+} from '@phosphor-icons/react'
 import { motion } from 'motion/react'
 import { useMemo, useSyncExternalStore } from 'react'
+import { passkeysSupported } from '../../api/auth'
 import { useLocale, useT } from '../../i18n'
 import { formatDay, relativeDay } from '../../lib/format'
 import { dayPart, useToday, zone } from '../../lib/time'
 import { toneFor, toneStyle } from '../../lib/tone'
 import { install } from '../../platform'
+import { useAccount } from '../../state/account'
 import { useData, useMe, usePartner } from '../../state/data'
 import { type TabId, useNav } from '../../state/nav'
 import { useSettings } from '../../state/settings'
@@ -62,6 +72,7 @@ export function TodayScreen() {
         {mode === 'demo' && <DemoCard />}
         <TogetherCard />
         <InviteCard />
+        <SafeCard />
         <InstallCard />
         <Countdowns />
         <UpNext />
@@ -154,6 +165,33 @@ export function InviteCard() {
       <span className="min-w-0 flex-1">
         <span className="block text-headline font-semibold text-coral-ink">{t.invite.title}</span>
         <span className="block text-sub text-ink-2">{t.invite.hint}</span>
+      </span>
+    </Pressable>
+  )
+}
+
+/** Until there's a passkey or email, this account lives on this phone only. */
+function SafeCard() {
+  const t = useT()
+  const mode = useData((s) => s.mode)
+  const info = useAccount((s) => s.info)
+  const emailSignIn = useAccount((s) => s.emailSignIn)
+  const openSheet = useUi((s) => s.openSheet)
+  if (mode !== 'synced' || !info || info.protected) return null
+  if (!passkeysSupported() && !emailSignIn) return null
+
+  return (
+    <Pressable
+      haptic="tap"
+      onPress={() => openSheet({ type: 'secure' })}
+      className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center gap-3 rounded-card bg-surface p-4 shadow-soft"
+    >
+      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-coral-soft text-coral">
+        <Fingerprint size={26} weight="duotone" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-headline font-semibold">{t.auth.safeTitle}</span>
+        <span className="block text-sub text-ink-2">{t.today.safeHint}</span>
       </span>
     </Pressable>
   )

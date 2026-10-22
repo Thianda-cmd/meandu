@@ -51,3 +51,12 @@ export interface InviteInfo {
   code: string
   expiresAt: string
 }
+
+/** How someone can get back into their account on another device. */
+export interface AccountInfo {
+  /** A confirmed address, or null for device-only accounts. */
+  email: string | null
+  passkeys: { id: string; name: string | null; createdAt: string }[]
+  /** There's a way back in besides this device. */
+  protected: boolean
+}

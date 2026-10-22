@@ -37,14 +37,4 @@ export function formatCode(code: string): string {
   return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code
 }
 
-/** Accepts a code typed with spaces or dashes, or pasted inside the whole invite message. */
-export function extractCode(text: string): string {
-  const fromLink = text.match(/\/join\/([A-Za-z0-9]{6})\b/)?.[1]
-  const raw = fromLink ?? text.replace(/^.*:/s, '')
-  return raw
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 6)
-}
-
 export const joinUrl = (code: string) => `${location.origin}/join/${code}`

@@ -1,4 +1,5 @@
-import type { InviteInfo, SpaceState, SyncRequest, SyncResponse } from '@meandu/core'
+import type { AccountInfo, InviteInfo, SpaceState, SyncRequest, SyncResponse } from '@meandu/core'
+import { useSettings } from '../state/settings'
 
 /** A failed API call. `code` is the server's stable error code (or `offline` / `server`). */
 export class ApiError extends Error {
@@ -10,21 +11,25 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, body?: unknown): Promise<T> {
+export async function call<T>(path: string, body?: unknown): Promise<T> {
   let res: Response
   try {
     res = await fetch(`/api${path}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      // The language goes along so emails arrive in the language the app is in.
+      headers: {
+        'x-lang': useSettings.getState().lang,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'same-origin',
     })
   } catch {
     throw new ApiError(0, 'offline')
   }
-  const json = await res.json().catch(() => null)
-  if (!res.ok)
-    throw new ApiError(res.status, (json as { error?: string } | null)?.error ?? 'server')
+  const json = (await res.json().catch(() => null)) as { error?: string; code?: string } | null
+  // Our endpoints answer { error }, the sign-in ones { code }.
+  if (!res.ok) throw new ApiError(res.status, json?.error ?? json?.code ?? 'server')
   return json as T
 }
 
@@ -39,6 +44,8 @@ export const api = {
   join: (input: { code: string; name: string; tone: string }) =>
     call<SpaceState>('/space/join', input),
   sync: (request: SyncRequest) => call<SyncResponse>('/sync', request),
+  config: () => call<{ email: boolean }>('/config'),
+  account: () => call<AccountInfo>('/account'),
 }
 
 /** Makes sure this device has an account, creating an anonymous one on first use. */

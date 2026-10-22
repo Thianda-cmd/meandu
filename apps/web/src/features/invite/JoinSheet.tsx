@@ -4,10 +4,10 @@ import { useT } from '../../i18n'
 import { haptics } from '../../platform'
 import { useMe } from '../../state/data'
 import { useUi } from '../../state/ui'
+import { CodeInput } from '../../ui/CodeInput'
 import { SheetBody, SheetHeader } from '../../ui/Sheet'
 import { BigButton } from '../../ui/states'
 import { joinSpace } from '../onboarding/actions'
-import { CodeInput } from './CodeInput'
 
 /** For a phone that already has its own space: join your person's instead. */
 export function JoinSheet({ code: initial = '' }: { code?: string }) {

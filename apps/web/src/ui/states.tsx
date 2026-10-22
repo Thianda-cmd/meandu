@@ -47,6 +47,15 @@ export function EmptyState({
   )
 }
 
+/** Room for one short error under a form, announced to screen readers. */
+export function ErrorLine({ text }: { text: string | null | undefined }) {
+  return (
+    <p role="alert" className="min-h-6 pb-2 pt-3 text-center text-sub font-semibold text-coral-ink">
+      {text}
+    </p>
+  )
+}
+
 /** A softly shimmering block standing in for content that's on its way. */
 export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {
   return <span aria-hidden className={cx('skeleton block rounded-xl', className)} style={style} />

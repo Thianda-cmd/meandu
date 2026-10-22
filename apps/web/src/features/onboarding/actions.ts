@@ -1,4 +1,5 @@
 import { api, ensureAccount } from '../../api/client'
+import { useAccount } from '../../state/account'
 import { useData } from '../../state/data'
 import { useNav } from '../../state/nav'
 import type { Tone } from '../../state/types'
@@ -44,4 +45,5 @@ export function startOver(): void {
   useUi.getState().closeSheet()
   useData.getState().reset()
   useNav.getState().reset()
+  useAccount.getState().clear()
 }

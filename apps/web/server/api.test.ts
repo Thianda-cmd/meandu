@@ -1,24 +1,42 @@
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import type { Mutation, RemoteRecord } from '@meandu/core'
+import { eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from './app'
 import { createAuth } from './auth'
+import type { Email } from './email'
 import * as schema from './schema'
 
 const ORIGIN = 'http://localhost:4173'
 let app: ReturnType<typeof createApp>
+let db: ReturnType<typeof drizzle<typeof schema>>
+const inbox: Email[] = []
 
 beforeAll(async () => {
-  const db = drizzle({ client: new PGlite(), schema })
+  db = drizzle({ client: new PGlite(), schema })
   await migrate(db, { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) })
   app = createApp({
     db,
-    auth: createAuth(db, { secret: 'test-secret-that-is-long-enough-32', rateLimit: false }),
+    auth: createAuth(db, {
+      secret: 'test-secret-that-is-long-enough-32',
+      rateLimit: false,
+      sendEmail: async (email) => void inbox.push(email),
+      passkeys: { rpID: 'localhost', origins: [ORIGIN] },
+    }),
+    emailSignIn: true,
   })
 }, 30_000)
+
+/** The code in the last email sent to this address. */
+function codeFor(to: string): string {
+  const email = inbox.findLast((e) => e.to === to)
+  const code = email?.text.match(/\b\d{6}\b/)?.[0]
+  if (!code) throw new Error(`no code for ${to}`)
+  return code
+}
 
 /** One phone: keeps its cookies between requests, like a browser would. */
 class Device {
@@ -229,5 +247,115 @@ describe('api', () => {
     })
     expect(res.json.spaceId).not.toBe(solo.json.spaceId)
     expect(res.json.records.map((r: RemoteRecord) => r.id)).toContain('ours')
+  })
+})
+
+describe('accounts', () => {
+  it('says whether codes can be emailed', async () => {
+    const res = await new Device().request('/config')
+    expect(res.json).toEqual({ email: true })
+  })
+
+  it('protects a device account with an email and signs in with it elsewhere', async () => {
+    const phone = new Device()
+    const me = await phone.signIn()
+    await phone.request('/space', { name: 'Kim', tone: 'berry' })
+    await phone.sync(0, [event('mine', { title: 'Concert' })])
+    expect((await phone.request('/account')).json).toMatchObject({ email: null, protected: false })
+
+    await phone.request('/auth/email-otp/request-email-change', { newEmail: 'Kim@Example.com' })
+    const added = await phone.request('/auth/email-otp/change-email', {
+      newEmail: 'kim@example.com',
+      otp: codeFor('kim@example.com'),
+    })
+    expect(added.status).toBe(200)
+    expect((await phone.request('/account')).json).toMatchObject({
+      email: 'kim@example.com',
+      protected: true,
+    })
+
+    // A new phone signs in with a code and finds the same account, space and plans.
+    const laptop = new Device()
+    await laptop.request('/auth/email-otp/send-verification-otp', {
+      email: 'kim@example.com',
+      type: 'sign-in',
+    })
+    const signedIn = await laptop.request('/auth/sign-in/email-otp', {
+      email: 'kim@example.com',
+      otp: codeFor('kim@example.com'),
+    })
+    expect(signedIn.json.user.id).toBe(me)
+    const synced = await laptop.sync(0)
+    expect(synced.records.map((r) => r.id)).toContain('mine')
+  })
+
+  it('never makes a new account from an unknown email', async () => {
+    const before = inbox.length
+    const stranger = new Device()
+    const sent = await stranger.request('/auth/email-otp/send-verification-otp', {
+      email: 'nobody@example.com',
+      type: 'sign-in',
+    })
+    expect(sent.status).toBe(200)
+    expect(inbox.length).toBe(before)
+    const res = await stranger.request('/auth/sign-in/email-otp', {
+      email: 'nobody@example.com',
+      otp: '123456',
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('only sends sign-in codes', async () => {
+    const res = await new Device().request('/auth/email-otp/send-verification-otp', {
+      email: 'kim@example.com',
+      type: 'forget-password',
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('lets a device account renew its session, but not a protected one', async () => {
+    const phone = new Device()
+    await phone.signIn()
+    expect((await phone.request('/auth/device/renew', {})).status).toBe(200)
+    expect((await phone.request('/account')).status).toBe(200)
+
+    await phone.request('/auth/email-otp/request-email-change', { newEmail: 'lee@example.com' })
+    await phone.request('/auth/email-otp/change-email', {
+      newEmail: 'lee@example.com',
+      otp: codeFor('lee@example.com'),
+    })
+    const renewed = await phone.request('/auth/device/renew', {})
+    expect(renewed.status).toBe(403)
+    expect(renewed.json.code).toBe('SESSION_NOT_FRESH')
+  })
+
+  it('asks a protected account to sign in again before changing its email', async () => {
+    const phone = new Device()
+    const me = await phone.signIn()
+    await phone.request('/auth/email-otp/request-email-change', { newEmail: 'ana@example.com' })
+    await phone.request('/auth/email-otp/change-email', {
+      newEmail: 'ana@example.com',
+      otp: codeFor('ana@example.com'),
+    })
+    // The session is two days old now.
+    await db
+      .update(schema.session)
+      .set({ createdAt: sql`now() - interval '2 days'` })
+      .where(eq(schema.session.userId, me))
+    const res = await phone.request('/auth/email-otp/request-email-change', {
+      newEmail: 'ana2@example.com',
+    })
+    expect(res.status).toBe(403)
+    expect(res.json.code).toBe('SESSION_NOT_FRESH')
+  })
+
+  it('prepares a passkey for a device account', async () => {
+    const phone = new Device()
+    await phone.signIn()
+    const res = await phone.request('/auth/passkey/generate-register-options?name=Kim')
+    expect(res.status).toBe(200)
+    expect(res.json.rp).toEqual({ name: 'meandu', id: 'localhost' })
+    expect(res.json.user.name).toBe('Kim')
+    expect(res.json.authenticatorSelection.residentKey).toBe('required')
   })
 })

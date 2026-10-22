@@ -6,6 +6,7 @@ import { useT } from '../i18n'
 import { startHistorySync } from '../navigation/history'
 import { TabBar, TabNavigator } from '../navigation/TabBar'
 import { haptics } from '../platform'
+import { useAccount } from '../state/account'
 import { useData } from '../state/data'
 import { useUi } from '../state/ui'
 import { startSync } from '../sync/engine'
@@ -31,18 +32,27 @@ export function App() {
   const hydrated = useData((s) => s.hydrated)
   const mode = useData((s) => s.mode)
   const joinCode = useUi((s) => s.joinCode)
+  const onboardingOpen = useUi((s) => s.onboardingOpen)
 
   useLayoutEffect(() => {
     if (hydrated) hideSplash()
   }, [hydrated])
 
-  useEffect(() => (mode === 'synced' ? startSync() : undefined), [mode])
+  useEffect(() => {
+    void useAccount.getState().loadConfig()
+  }, [])
+
+  useEffect(() => {
+    if (mode !== 'synced') return
+    void useAccount.getState().load()
+    return startSync()
+  }, [mode])
 
   // The launch screen stays up while the saved data loads (a few milliseconds).
   if (!hydrated) return null
 
   // An invite link opened in the demo goes straight to joining for real.
-  const onboarding = mode === 'none' || (mode === 'demo' && joinCode !== null)
+  const onboarding = mode === 'none' || onboardingOpen || (mode === 'demo' && joinCode !== null)
 
   return (
     <MotionConfig reducedMotion="user">
