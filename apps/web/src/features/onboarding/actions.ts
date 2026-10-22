@@ -1,4 +1,5 @@
 import { api, ensureAccount } from '../../api/client'
+import { forgetPhotosExcept } from '../../lib/photos'
 import { useAccount } from '../../state/account'
 import { useData } from '../../state/data'
 import { useNav } from '../../state/nav'
@@ -46,4 +47,5 @@ export function startOver(): void {
   useData.getState().reset()
   useNav.getState().reset()
   useAccount.getState().clear()
+  void forgetPhotosExcept(new Set())
 }

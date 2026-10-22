@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect } from 'react'
 import { Onboarding } from '../features/onboarding/Onboarding'
 import { SheetHost } from '../features/SheetHost'
 import { useT } from '../i18n'
+import { forgetPhotosExcept } from '../lib/photos'
 import { startHistorySync } from '../navigation/history'
 import { TabBar, TabNavigator } from '../navigation/TabBar'
 import { haptics } from '../platform'
@@ -48,6 +49,8 @@ export function App() {
     return startSync()
   }, [mode])
 
+  useTidyPhotos(hydrated)
+
   // The launch screen stays up while the saved data loads (a few milliseconds).
   if (!hydrated) return null
 
@@ -89,6 +92,24 @@ function Main() {
       <SheetHost />
     </motion.div>
   )
+}
+
+/**
+ * Photos of a deleted memory stay a moment, for "Undo". A while after launch, the ones no
+ * memory uses anymore are deleted from the phone.
+ */
+function useTidyPhotos(hydrated: boolean) {
+  useEffect(() => {
+    if (!hydrated) return
+    const timer = window.setTimeout(() => {
+      const { mode, cursor, memories } = useData.getState()
+      // Until a space's first sync, its memories aren't all on this phone yet.
+      if (mode === 'synced' && cursor === 0) return
+      const used = new Set(memories.flatMap((m) => m.photos.map((p) => p.id)))
+      void forgetPhotosExcept(used, Date.now() - 10 * 60_000)
+    }, 5000)
+    return () => window.clearTimeout(timer)
+  }, [hydrated])
 }
 
 /** A little party when your person joins. */

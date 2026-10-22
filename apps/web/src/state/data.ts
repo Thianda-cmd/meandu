@@ -49,7 +49,11 @@ interface DataState extends Persisted {
   saveEvent: (event: CalendarEvent) => void
   deleteEvent: (id: string) => Undo
   addList: (title: string, emoji: string) => string
+  updateList: (id: string, patch: Partial<Pick<List, 'title' | 'emoji'>>) => void
+  /** Deletes the list with everything on it. */
+  deleteList: (id: string) => Undo
   addItem: (listId: string, text: string) => void
+  updateItem: (id: string, patch: Partial<Pick<ListItem, 'text' | 'assigneeId'>>) => void
   toggleItem: (id: string) => void
   deleteItem: (id: string) => Undo
   saveMemory: (memory: Memory) => void
@@ -170,6 +174,35 @@ export const useData = create<DataState>()(
           return list.id
         },
 
+        updateList: (id, patch) =>
+          set((s) => change(s, { kind: 'list', id, op: 'put', data: toJson(patch) })),
+
+        deleteList: (id) => {
+          const list = get().lists.find((l) => l.id === id)
+          const items = get().items.filter((i) => i.listId === id)
+          set((s) => {
+            let next: Persisted = s
+            for (const item of items)
+              next = { ...next, ...change(next, { kind: 'item', id: item.id, op: 'delete' }) }
+            return { ...next, ...change(next, { kind: 'list', id, op: 'delete' }) }
+          })
+          return () =>
+            set((s) => {
+              if (!list) return s
+              let next: Persisted = {
+                ...s,
+                ...change(s, { kind: 'list', id, op: 'put', data: toJson(list) }),
+              }
+              for (const item of items) {
+                next = {
+                  ...next,
+                  ...change(next, { kind: 'item', id: item.id, op: 'put', data: toJson(item) }),
+                }
+              }
+              return next
+            })
+        },
+
         addItem: (listId, text) => {
           const item: ListItem = {
             id: uuidv7(),
@@ -181,6 +214,10 @@ export const useData = create<DataState>()(
           }
           set((s) => change(s, { kind: 'item', id: item.id, op: 'put', data: toJson(item) }))
         },
+
+        updateItem: (id, patch) =>
+          // `assigneeId: null` (anyone) goes out as null, which the other phone reads the same way.
+          set((s) => change(s, { kind: 'item', id, op: 'put', data: { ...patch } })),
 
         toggleItem: (id) => {
           const item = get().items.find((i) => i.id === id)

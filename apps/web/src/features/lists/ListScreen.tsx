@@ -1,4 +1,4 @@
-import { CaretDown, Check, Plus } from '@phosphor-icons/react'
+import { CaretDown, Check, PencilSimple, Plus } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type FormEvent, useMemo, useRef, useState } from 'react'
 import { useT } from '../../i18n'
@@ -10,15 +10,20 @@ import type { ListItem } from '../../state/types'
 import { useUi } from '../../state/ui'
 import { Avatar } from '../../ui/Avatar'
 import { SNAPPY } from '../../ui/motion'
-import { Pressable } from '../../ui/Pressable'
+import { IconButton, Pressable } from '../../ui/Pressable'
 import { Screen } from '../../ui/Screen'
-import { SwipeRow } from '../../ui/SwipeRow'
+import { SwipeRow, useWasSwiped } from '../../ui/SwipeRow'
 import { EmptyState } from '../../ui/states'
 
 export function ListScreen({ id }: { id: string }) {
   const t = useT()
-  const list = useData((s) => s.lists.find((l) => l.id === id))
+  const found = useData((s) => s.lists.find((l) => l.id === id))
   const items = useData((s) => s.items)
+  const openSheet = useUi((s) => s.openSheet)
+  // Keep showing the list while the screen slides away after deleting it.
+  const last = useRef(found)
+  if (found) last.current = found
+  const list = found ?? last.current
   const [showDone, setShowDone] = useState(false)
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
@@ -48,9 +53,25 @@ export function ListScreen({ id }: { id: string }) {
   }
 
   return (
-    <Screen large title={list.title} eyebrow={<span className="text-2xl">{list.emoji}</span>}>
+    <Screen
+      large
+      title={list.title}
+      eyebrow={<span className="text-2xl">{list.emoji}</span>}
+      actions={
+        found && (
+          <IconButton
+            label={t.lists.editTitle}
+            haptic="tap"
+            onPress={() => openSheet({ type: 'list', listId: list.id })}
+          >
+            <PencilSimple size={18} weight="bold" />
+          </IconButton>
+        )
+      }
+    >
       <form
         onSubmit={add}
+        inert={!found}
         className="mx-4 mb-2 flex items-center gap-3 rounded-2xl bg-surface px-3 shadow-soft"
       >
         <Plus size={20} weight="bold" className="shrink-0 text-coral" />
@@ -132,6 +153,7 @@ function Item({ item }: { item: ListItem }) {
   const me = useMe()
   const partner = usePartner()
   const assignee = item.assigneeId === me.id ? me : item.assigneeId === partner?.id ? partner : null
+  const wasSwiped = useWasSwiped()
 
   const remove = () => {
     const undo = useData.getState().deleteItem(item.id)
@@ -144,9 +166,12 @@ function Item({ item }: { item: ListItem }) {
         <Pressable
           aria-label={item.text}
           aria-pressed={item.done}
-          haptic={item.done ? 'select' : 'success'}
           feedback="none"
-          onPress={() => useData.getState().toggleItem(item.id)}
+          onPress={() => {
+            if (wasSwiped()) return
+            haptics[item.done ? 'select' : 'success']()
+            useData.getState().toggleItem(item.id)
+          }}
           style={toneStyle(assignee?.tone ?? 'sage')}
           className={cx(
             'grid size-7 shrink-0 place-items-center rounded-full border-2 transition-colors duration-200',
@@ -166,15 +191,25 @@ function Item({ item }: { item: ListItem }) {
             )}
           </AnimatePresence>
         </Pressable>
-        <span
-          className={cx(
-            'min-w-0 flex-1 text-body transition-colors',
-            item.done && 'text-ink-3 line-through',
-          )}
+        <Pressable
+          feedback="none"
+          aria-label={`${t.common.edit}: ${item.text}`}
+          aria-haspopup="dialog"
+          onPress={() => {
+            if (!wasSwiped()) useUi.getState().openSheet({ type: 'item', itemId: item.id })
+          }}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 self-stretch"
         >
-          {item.text}
-        </span>
-        {assignee && <Avatar person={assignee} size={24} />}
+          <span
+            className={cx(
+              'min-w-0 flex-1 break-words text-body transition-colors',
+              item.done && 'text-ink-3 line-through',
+            )}
+          >
+            {item.text}
+          </span>
+          {assignee && <Avatar person={assignee} size={24} />}
+        </Pressable>
       </div>
     </SwipeRow>
   )

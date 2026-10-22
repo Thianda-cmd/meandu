@@ -43,6 +43,18 @@ export function StackView({ tab }: { tab: TabId }) {
   const [leaving, setLeaving] = useState<Entry | null>(null)
   const previous = useRef(entries)
   const transition = useRef(0)
+  /** Finishes the pop that's sliding away right now. */
+  const landPop = useRef<(() => void) | null>(null)
+
+  // Switching tabs mid-slide hides this stack, which stops the slide halfway. Land it now,
+  // so the tab isn't stuck between two screens when you come back.
+  useLayoutEffect(
+    () => () => {
+      x.jump(0)
+      landPop.current?.()
+    },
+    [x],
+  )
 
   useLayoutEffect(() => {
     const before = previous.current
@@ -74,11 +86,14 @@ export function StackView({ tab }: { tab: TabId }) {
       return
     }
     setLeaving(beforeTop)
-    animate(x, width, { ...STACK_SPRING, velocity }).then(() => {
+    const land = () => {
       if (transition.current !== id) return
+      landPop.current = null
       setLeaving(null)
       x.jump(0)
-    })
+    }
+    landPop.current = land
+    animate(x, width, { ...STACK_SPRING, velocity }).then(land)
   }, [entries, width, x, reduceMotion])
 
   const rendered = leaving ? [...entries, leaving] : entries

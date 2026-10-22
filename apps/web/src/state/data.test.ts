@@ -115,3 +115,48 @@ describe('acknowledge', () => {
     expect(useData.getState().spaceId).toBe('s2')
   })
 })
+
+describe('lists', () => {
+  it('deletes a list with everything on it, and undo brings it all back', () => {
+    const { addList, addItem, deleteList } = useData.getState()
+    const id = addList('Groceries', '🛒')
+    addItem(id, 'Oat milk')
+    addItem(id, 'Basil')
+    const other = addList('Ideas', '💡')
+    addItem(other, 'Pottery class')
+
+    const undo = deleteList(id)
+    let state = useData.getState()
+    expect(state.lists.map((l) => l.title)).toEqual(['Ideas'])
+    expect(state.items.map((i) => i.text)).toEqual(['Pottery class'])
+    expect(state.outbox.filter((e) => e.op === 'delete')).toHaveLength(3)
+
+    undo()
+    state = useData.getState()
+    expect(state.lists.map((l) => l.title).sort()).toEqual(['Groceries', 'Ideas'])
+    expect(
+      state.items
+        .filter((i) => i.listId === id)
+        .map((i) => i.text)
+        .sort(),
+    ).toEqual(['Basil', 'Oat milk'])
+    expect(state.outbox.every((e) => e.op === 'put')).toBe(true)
+  })
+
+  it('sends "anyone" as null, which reads back the same on the other phone', () => {
+    const { addList, addItem, updateItem } = useData.getState()
+    const list = addList('Home', '🏠')
+    addItem(list, 'Fix the shelf')
+    const item = useData.getState().items[0]
+    if (!item) throw new Error('no item')
+
+    updateItem(item.id, { assigneeId: 'you', text: 'Fix the shelf properly' })
+    expect(useData.getState().items[0]).toMatchObject({
+      assigneeId: 'you',
+      text: 'Fix the shelf properly',
+    })
+    updateItem(item.id, { assigneeId: null })
+    expect(useData.getState().items[0]?.assigneeId).toBeNull()
+    expect(useData.getState().outbox.at(-1)?.data).toMatchObject({ assigneeId: null })
+  })
+})

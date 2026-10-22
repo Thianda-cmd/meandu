@@ -1,3 +1,4 @@
+import { Trash } from '@phosphor-icons/react'
 import { useState } from 'react'
 import { useT } from '../../i18n'
 import { cx } from '../../lib/cx'
@@ -10,32 +11,57 @@ import { SheetBody, SheetHeader } from '../../ui/Sheet'
 
 const EMOJIS = ['📝', '🛒', '🏠', '💡', '🌍', '🎁', '🍳', '🧳', '📚', '🎬', '🌱', '💪']
 
-export function ListSheet() {
+/** A new list, or renaming one (`listId`). */
+export function ListSheet({ listId }: { listId?: string }) {
   const t = useT()
   const close = useUi((s) => s.closeSheet)
-  const [title, setTitle] = useState('')
-  const [emoji, setEmoji] = useState('📝')
+  const existing = useData((s) => s.lists.find((l) => l.id === listId))
+  const [title, setTitle] = useState(existing?.title ?? '')
+  const [emoji, setEmoji] = useState(existing?.emoji ?? '📝')
+  // A list may wear an emoji from elsewhere; it stays one of the choices.
+  const [choices] = useState(() =>
+    existing && !EMOJIS.includes(existing.emoji)
+      ? [existing.emoji, ...EMOJIS.slice(0, -1)]
+      : EMOJIS,
+  )
 
-  const create = () => {
-    const id = useData.getState().addList(title.trim(), emoji)
+  const save = () => {
+    const name = title.trim()
+    if (!name) return
     haptics.success()
     close()
+    if (existing) {
+      if (name !== existing.title || emoji !== existing.emoji) {
+        useData.getState().updateList(existing.id, { title: name, emoji })
+      }
+      return
+    }
+    const id = useData.getState().addList(name, emoji)
     useNav.getState().open('lists', { name: 'list', id })
+  }
+
+  const remove = () => {
+    if (!existing) return
+    haptics.warn()
+    close()
+    useNav.getState().pop()
+    const undo = useData.getState().deleteList(existing.id)
+    useUi.getState().showToast(t.common.deleted, { label: t.common.undo, run: undo })
   }
 
   return (
     <>
       <SheetHeader
-        title={t.lists.newTitle}
+        title={existing ? t.lists.editTitle : t.lists.newTitle}
         onClose={close}
         action={
           <Pressable
             haptic="tap"
             isDisabled={!title.trim()}
-            onPress={create}
+            onPress={save}
             className="rounded-full bg-coral px-4 py-1.5 text-headline font-semibold text-white"
           >
-            {t.common.add}
+            {existing ? t.common.save : t.common.add}
           </Pressable>
         }
       />
@@ -51,13 +77,13 @@ export function ListSheet() {
             aria-label={t.lists.namePlaceholder}
             enterKeyHint="done"
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && title.trim()) create()
+              if (e.key === 'Enter') save()
             }}
             className="min-w-0 flex-1 py-2 font-display text-title font-bold"
           />
         </div>
         <div className="mt-4 grid grid-cols-6 gap-2">
-          {EMOJIS.map((e) => (
+          {choices.map((e) => (
             <Pressable
               key={e}
               haptic="select"
@@ -72,6 +98,15 @@ export function ListSheet() {
             </Pressable>
           ))}
         </div>
+        {existing && (
+          <Pressable
+            onPress={remove}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-full py-3 text-headline font-semibold text-coral-ink"
+          >
+            <Trash size={20} weight="bold" />
+            {t.lists.deleteList}
+          </Pressable>
+        )}
       </SheetBody>
     </>
   )

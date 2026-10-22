@@ -7,6 +7,7 @@ import { CreateSheet } from './create/CreateSheet'
 import { InstallSheet } from './install/InstallSheet'
 import { InviteSheet } from './invite/InviteSheet'
 import { JoinSheet } from './invite/JoinSheet'
+import { ItemSheet } from './lists/ItemSheet'
 import { ListSheet } from './lists/ListSheet'
 import { MemorySheet } from './memories/MemorySheet'
 
@@ -26,11 +27,26 @@ export function SheetHost() {
           <EventSheet eventId={sheet.eventId} date={sheet.date} countdown={sheet.countdown} />
         )}
       </Sheet>
-      <Sheet open={sheet?.type === 'memory'} onClose={close} label={t.memories.newTitle}>
-        {sheet?.type === 'memory' && <MemorySheet eventId={sheet.eventId} />}
+      <Sheet
+        open={sheet?.type === 'memory'}
+        onClose={close}
+        label={
+          sheet?.type === 'memory' && sheet.memoryId ? t.memories.editTitle : t.memories.newTitle
+        }
+      >
+        {sheet?.type === 'memory' && (
+          <MemorySheet eventId={sheet.eventId} memoryId={sheet.memoryId} />
+        )}
       </Sheet>
-      <Sheet open={sheet?.type === 'list'} onClose={close} label={t.lists.newTitle}>
-        <ListSheet />
+      <Sheet
+        open={sheet?.type === 'list'}
+        onClose={close}
+        label={sheet?.type === 'list' && sheet.listId ? t.lists.editTitle : t.lists.newTitle}
+      >
+        {sheet?.type === 'list' && <ListSheet listId={sheet.listId} />}
+      </Sheet>
+      <Sheet open={sheet?.type === 'item'} onClose={close} label={t.common.edit}>
+        {sheet?.type === 'item' && <ItemSheet itemId={sheet.itemId} />}
       </Sheet>
       <Sheet open={sheet?.type === 'install'} onClose={close} label={t.install.title}>
         <InstallSheet />

@@ -3,8 +3,11 @@ import { create } from 'zustand'
 export type SheetState =
   | { type: 'create' }
   | { type: 'event'; eventId?: string; date?: string; countdown?: boolean }
-  | { type: 'memory'; eventId?: string }
-  | { type: 'list' }
+  /** A new memory (maybe from a plan), or editing one. */
+  | { type: 'memory'; eventId?: string; memoryId?: string }
+  /** A new list, or editing one. */
+  | { type: 'list'; listId?: string }
+  | { type: 'item'; itemId: string }
   | { type: 'install' }
   | { type: 'invite' }
   | { type: 'join'; code?: string }

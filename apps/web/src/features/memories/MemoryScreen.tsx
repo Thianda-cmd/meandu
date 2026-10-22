@@ -1,5 +1,5 @@
 import { Temporal } from '@meandu/core'
-import { CalendarBlank, MapPin, Trash } from '@phosphor-icons/react'
+import { CalendarBlank, MapPin, PencilSimple, Trash } from '@phosphor-icons/react'
 import { useRef, useState } from 'react'
 import { useLocale, useT } from '../../i18n'
 import { cx } from '../../lib/cx'
@@ -8,7 +8,7 @@ import { haptics } from '../../platform'
 import { useData } from '../../state/data'
 import { useNav } from '../../state/nav'
 import { useUi } from '../../state/ui'
-import { Pressable } from '../../ui/Pressable'
+import { IconButton, Pressable } from '../../ui/Pressable'
 import { Screen } from '../../ui/Screen'
 import { PhotoView } from './Photo'
 
@@ -32,7 +32,20 @@ export function MemoryScreen({ id }: { id: string }) {
   }
 
   return (
-    <Screen title={memory.title}>
+    <Screen
+      title={memory.title}
+      actions={
+        found && (
+          <IconButton
+            label={t.memories.editTitle}
+            haptic="tap"
+            onPress={() => useUi.getState().openSheet({ type: 'memory', memoryId: memory.id })}
+          >
+            <PencilSimple size={18} weight="bold" />
+          </IconButton>
+        )
+      }
+    >
       <div className="px-4">
         <div
           className="scroll-x flex snap-x snap-mandatory overflow-hidden rounded-card"
