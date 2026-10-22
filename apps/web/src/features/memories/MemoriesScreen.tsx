@@ -1,5 +1,5 @@
 import { Temporal } from '@meandu/core'
-import { Camera } from '@phosphor-icons/react'
+import { Plus } from '@phosphor-icons/react'
 import { useMemo } from 'react'
 import { useLocale, useT } from '../../i18n'
 import { formatMonth } from '../../lib/format'
@@ -7,8 +7,10 @@ import { useData } from '../../state/data'
 import { useNav } from '../../state/nav'
 import type { Memory } from '../../state/types'
 import { useUi } from '../../state/ui'
+import { useFirstSyncPending } from '../../sync/engine'
 import { Pressable } from '../../ui/Pressable'
 import { Screen } from '../../ui/Screen'
+import { EmptyState, Skeleton } from '../../ui/states'
 import { PhotoView } from './Photo'
 
 export function MemoriesScreen() {
@@ -17,6 +19,7 @@ export function MemoriesScreen() {
   const memories = useData((s) => s.memories)
   const push = useNav((s) => s.push)
   const openSheet = useUi((s) => s.openSheet)
+  const loading = useFirstSyncPending()
 
   const groups = useMemo(() => {
     const sorted = [...memories].sort((a, b) => b.date.localeCompare(a.date))
@@ -30,14 +33,29 @@ export function MemoriesScreen() {
 
   return (
     <Screen large title={t.memories.title}>
-      {groups.length === 0 && (
-        <Pressable
-          onPress={() => openSheet({ type: 'memory' })}
-          className="mx-4 mt-6 flex flex-col items-center gap-3 rounded-card border-2 border-dashed border-ink-3/40 p-10 text-center text-ink-2"
-        >
-          <Camera size={36} weight="duotone" />
-          <span className="font-display text-title font-bold">{t.memories.empty}</span>
-        </Pressable>
+      {loading ? (
+        <div aria-hidden className="grid grid-cols-2 gap-3 px-4 pt-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="aspect-[4/5] rounded-card" />
+          ))}
+        </div>
+      ) : (
+        groups.length === 0 && (
+          <EmptyState
+            emoji="📸"
+            title={t.memories.empty}
+            action={
+              <Pressable
+                haptic="tap"
+                onPress={() => openSheet({ type: 'memory' })}
+                className="flex items-center gap-2 rounded-full bg-coral px-5 py-2.5 text-headline font-semibold text-white shadow-soft"
+              >
+                <Plus size={18} weight="bold" />
+                {t.memories.newTitle}
+              </Pressable>
+            }
+          />
+        )
       )}
       {groups.map(([month, items]) => (
         <section key={month} className="pb-2">

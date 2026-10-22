@@ -50,7 +50,6 @@ export const en = {
   calendar: {
     month: 'Month',
     agenda: 'List',
-    empty: 'Nothing yet',
     showToday: 'Today',
     filter: 'Show',
   },
@@ -249,7 +248,6 @@ export const de: Messages = {
   calendar: {
     month: 'Monat',
     agenda: 'Liste',
-    empty: 'Noch nichts',
     showToday: 'Heute',
     filter: 'Zeigen',
   },

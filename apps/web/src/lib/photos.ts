@@ -27,26 +27,40 @@ export async function storePhoto(file: File): Promise<Photo> {
   return { id, kind: 'blob', width, height }
 }
 
-/** A URL for showing a stored photo; `undefined` while loading and for gradient placeholders. */
-export function usePhotoUrl(photo: Photo | undefined): string | undefined {
-  const [url, setUrl] = useState<string>()
+export type PhotoState =
+  | { status: 'loading' }
+  | { status: 'ready'; url: string }
+  /** Photos only live on the phone that took them until photo sync exists. */
+  | { status: 'missing' }
+
+/** Loads a stored photo for showing. Gradient placeholders count as missing. */
+export function usePhoto(photo: Photo | undefined): PhotoState {
   const id = photo?.kind === 'blob' ? photo.id : undefined
+  const [state, setState] = useState<PhotoState>(id ? { status: 'loading' } : { status: 'missing' })
 
   useEffect(() => {
-    if (!id) return
+    if (!id) {
+      setState({ status: 'missing' })
+      return
+    }
     let objectUrl: string | undefined
     let cancelled = false
-    get<Blob>(`photo:${id}`).then((blob) => {
-      if (cancelled || !blob) return
-      objectUrl = URL.createObjectURL(blob)
-      setUrl(objectUrl)
-    })
+    setState({ status: 'loading' })
+    get<Blob>(`photo:${id}`)
+      .then((blob) => {
+        if (cancelled) return
+        if (!blob) return setState({ status: 'missing' })
+        objectUrl = URL.createObjectURL(blob)
+        setState({ status: 'ready', url: objectUrl })
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: 'missing' })
+      })
     return () => {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
-      setUrl(undefined)
     }
   }, [id])
 
-  return url
+  return state
 }

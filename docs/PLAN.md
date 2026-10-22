@@ -4,7 +4,7 @@
 > Web + installable PWA first, native apps (iOS, Android, desktop) via Tauri v2 later.
 >
 > Owner: Mikolaj Boje · Lives at: couple.bojes.org
-> Status: Phase 0 (clickable prototype) · Last updated: 2026-10-22
+> Status: Phase 1 (real accounts, pairing and sync work; account recovery and photo sync next) · Last updated: 2026-10-22
 
 1. [Decisions so far](#1-decisions-so-far)
 2. [Product scope](#2-product-scope)
@@ -34,7 +34,7 @@
 | Audience | Public app for couples (exactly two people per space) | |
 | Platforms | Web + PWA first, Tauri v2 for iOS / Android / desktop later | One codebase for every platform |
 | Frontend | React 19 + TypeScript + Vite, built as a static single-page app | Biggest ecosystem for native-feel pieces; a static build is exactly what Tauri wraps |
-| Backend | Supabase: Postgres, Auth, Realtime, Storage, Cron, Edge Functions | Covers everything this app needs, open source, plain SQL |
+| Backend | Neon Postgres (Frankfurt) + a small API of our own (Hono) as one Vercel function, Drizzle for schema and migrations, Better Auth for accounts | One repo and one deploy, plain SQL underneath, nothing we don't use. Switched from Supabase on 2026-10-22 |
 | Data region | EU (Frankfurt) | Simplest GDPR story for intimate data; the app reads from its local copy, so distance barely matters |
 | v1 features | Shared calendar, countdowns & special days, shared lists, memories | |
 | Later | "When are we both free?" + external calendar import | Fits the native phase, where the app can read the phone's calendars |
@@ -124,10 +124,10 @@ Cozy and romantic, never cheesy. Think Headspace × Paired.
 ## 5. Architecture
 
 ### Principles
-1. **Static SPA + platform layer.** The app is plain static files talking to Supabase. Device features go through `platform/` (web now, Tauri later), so every platform runs the same build.
+1. **Static SPA + platform layer.** The app is plain static files talking to our own API (`/api/*`, one Vercel function). Device features go through `platform/` (web now, Tauri later), so every platform runs the same build.
 2. **Local-first.** Screens read from a database on the device; writes apply instantly and sync in the background. Everything keeps working offline.
-3. **Privacy by design.** EU hosting, authorization enforced inside the database, realtime messages that carry no content, no third-party trackers or font CDNs.
-4. **Calendar logic is pure and tested.** Recurrence, time zones and countdowns live in `packages/core`, shared by the app and the server functions.
+3. **Privacy by design.** EU hosting, every query scoped to the caller's space, no third-party trackers or font CDNs.
+4. **Calendar logic is pure and tested.** Recurrence, time zones and countdowns live in `packages/core`, shared by the app and the API.
 5. **Native feel is a feature.** It has its own building blocks ([§11](#11-native-feel-the-building-blocks)), a performance budget and real-device testing.
 
 ### Stack
@@ -139,16 +139,16 @@ Cozy and romantic, never cheesy. Think Headspace × Paired.
 | Navigation | Our own tab / stack navigator with URL sync (native back behaviour doesn't map onto URL routers, so we skipped TanStack Router) |
 | Interaction | React Aria Components (accessible, touch-correct primitives), Motion (springs and gestures) |
 | Styling | Tailwind CSS v4, design tokens as CSS variables |
-| Local database | Dexie (IndexedDB) with live queries |
-| Sync | A small sync layer of our own over Supabase ([§7](#7-sync)) |
+| Local database | IndexedDB: the whole space as one zustand store, saved with idb-keyval (Dexie if it outgrows that) |
+| Sync | A small sync layer of our own: an outbox on the phone and one `/api/sync` endpoint ([§7](#7-sync)) |
 | Dates | Temporal API (polyfilled where missing), RFC 5545 recurrence rules |
-| Validation | Zod, shared by the app and server functions |
+| Validation | Zod in the API; the app checks what it receives before showing it |
 | Languages | Small typed dictionaries for English and German (the compiler catches missing German strings), `Intl` for dates and numbers |
 | Pickers | The phone's own date, time and option wheels, shown as formatted pills |
 | Long lists | TanStack Virtual (month view, agenda, memories) |
 | PWA | vite-plugin-pwa (Workbox) for the offline app shell and updates, plus our own service-worker code for Web Push |
-| Backend | Supabase in the EU: Postgres, Auth, Realtime, Storage, Cron, Edge Functions (Deno) |
-| Hosting | Vercel for the static app, with a preview URL for every pull request |
+| Backend | Neon Postgres (Frankfurt) · Hono API as one Vercel function in Frankfurt · Drizzle ORM, migrations run on every deploy · Better Auth (httpOnly cookie sessions, rate limits stored in the database) |
+| Hosting | Vercel for the app and the API, with a preview URL for every pull request |
 | Errors and analytics | Sentry (EU region), cookieless analytics (Plausible or PostHog EU) |
 | Tooling | pnpm workspaces, Biome, Vitest, Playwright, GitHub Actions |
 | Native (later) | Tauri v2 + plugins (Capacitor for mobile stays a fallback, see [§16](#16-risks-to-test-early)) |
@@ -158,32 +158,35 @@ Cozy and romantic, never cheesy. Think Headspace × Paired.
 ```
 meandu/
 ├─ apps/
-│  └─ web/                 # the app (later also src-tauri/ for the native builds)
-│     └─ src/
-│        ├─ app/           # shell, providers, router
-│        ├─ navigation/    # tabs, stacks, sheets, transitions, swipe-back
-│        ├─ ui/            # design system: tokens + components
-│        ├─ platform/      # web.ts now, tauri.ts later
-│        ├─ data/          # local DB schema, sync engine, hooks (useEvents, useList, ...)
-│        └─ features/      # today, calendar, lists, memories, onboarding, settings
+│  └─ web/                 # the app and its API (later also src-tauri/ for the native builds)
+│     ├─ src/
+│     │  ├─ app/           # shell, launch-screen hand-off, error screen
+│     │  ├─ navigation/    # tabs, stacks, sheets, transitions, swipe-back
+│     │  ├─ ui/            # design system: tokens + components
+│     │  ├─ platform/      # web.ts now, tauri.ts later
+│     │  ├─ state/         # the space on the phone, outbox, settings
+│     │  ├─ sync/          # sync engine
+│     │  └─ features/      # today, calendar, lists, memories, onboarding, invite, settings
+│     ├─ api/              # the Vercel function: every /api request goes to the server below
+│     ├─ server/           # Hono app, accounts, spaces & invites, sync, tests on an embedded Postgres
+│     ├─ drizzle/          # SQL migrations
+│     └─ scripts/          # migrate on deploy, local API, iOS launch images
 ├─ packages/
-│  └─ core/                # pure TS: dates, recurrence, countdowns, ordering, plans, schemas
-├─ supabase/
-│  ├─ migrations/          # schema, row-level security, sync functions
-│  ├─ functions/           # reminder planning, push sending, invites, export / delete
-│  └─ tests/               # database tests for security rules and sync
+│  └─ core/                # pure TS: dates, recurrence, countdowns, sync protocol types
 └─ docs/
 ```
 
 ### How data flows
 
 ```
-You write:        screen → local DB + outbox → sync engine → Supabase (security rules check it)
-You read:         screen ← live query ← local DB ← sync_pull ← Supabase
-Your partner writes: Supabase → "poke" on your space's realtime channel → your device pulls the change
+You write:           screen → phone's copy + outbox → POST /api/sync → Postgres (the API checks it)
+You read:            screen ← phone's copy ← /api/sync (everything since the last version you saw)
+Your partner writes: Postgres → your phone asks every 10 s while the app is open, and on coming back
 ```
 
 ## 6. Data model (v1 sketch)
+
+**As built:** the content lives in one `records` table. Each row is a JSON document of one `kind` (event, list, item, memory, person or settings) with `space_id`, `version`, `created_by`, `private` and `deleted_at`, next to `spaces`, `members`, `invites` and the account tables. The table below is the shape of those documents; overrides, reminders and push tables arrive with their features.
 
 A **space** is the couple's shared home (solo until the partner joins). All shared data carries `space_id`. IDs are UUIDv7s generated on the device, so things can be created offline. Synced tables also have `created_by`, `created_at`, `updated_at`, `version` and `deleted_at`.
 
@@ -210,32 +213,33 @@ Goal: every screen renders from the device, every write is instant, the partner 
 
 **Writing**
 1. The UI writes to the local database immediately and adds the change to an **outbox**. Only changed fields are recorded, so two people editing different fields of the same thing don't overwrite each other.
-2. The sync engine sends the outbox to Supabase in order. Writes are idempotent (IDs are generated on the device), so retrying after a flaky connection is safe. Row-level security checks every write.
+2. The sync engine sends the outbox to `/api/sync` in order, folding repeated edits of the same thing into one. Writes are idempotent (IDs are generated on the device), so retrying after a flaky connection is safe. The API checks every write: only your own space, only your own private things, only your own name and colour.
 3. If the server rejects a write (for example, the user is no longer in that space), the local change is rolled back and the user gets a gentle message.
 
 **Reading**
-1. A database trigger stamps every changed row with its space's next `sync_version`. Because it locks the space row while doing so, versions are committed strictly in order per space, so no change can be skipped.
-2. Devices call `sync_pull(since_version)`: one round trip returns every change across all tables. Rows the caller may not see (such as a partner's private event) come back as removals, so turning an event private also removes it from the partner's phone.
-3. After each change, the database sends a **poke** (just "version N exists", no data) on the space's private realtime channel, and the partner's device pulls. Realtime never carries content, so it can't leak anything.
-4. Deleted rows are kept as tombstones for 30 days; a device that was offline for longer does a full resync.
+1. The API stamps every changed record with its space's next version. It locks the space row while doing so, so versions are committed strictly in order per space and no change can be skipped.
+2. The same `/api/sync` request returns every change after the version the phone last saw, in pages of up to 1,000. Records the caller may not see (such as a partner's private event) come back as removals, so turning an event private also removes it from the partner's phone. A phone that just moved to its partner's space gets everything from scratch.
+3. For now the partner's phone asks every 10 seconds while the app is open, right away when it comes back to the foreground, and when the connection returns. A content-free **poke** ("version N exists", over Neon's realtime or Web Push) can replace the polling later.
+4. Deleted records are kept as tombstones. Cleaning them up, with a full resync for phones that were offline longer than that, comes later.
 
 **Conflicts:** the last write wins, per field. With two people and small amounts of data, that's the right trade-off.
 
-**Housekeeping:** only one browser tab runs the sync loop (Web Locks), and every tab sees changes through Dexie's live queries. Signing out wipes the local database.
+**Housekeeping (later):** only one browser tab runs the sync loop (Web Locks) and the others follow; signing out wipes the phone's copy.
 
-**Why our own sync layer and not a sync service:** a space's data is tiny and the rules are simple, so roughly a thousand lines of well-tested code give us full control, no extra vendor in the GDPR setup and no per-connection costs. Everything sits behind our own hooks (`useEvents(range)`, `useList(id)`), so a service like PowerSync (which has a Supabase integration) could replace it later without touching any screens. Also looked at: Zero (1.0 since mid-2026, but it needs its own always-running sync server) and TanStack DB (not stable yet). Both are worth re-checking later.
+**Why our own sync layer and not a sync service:** a space's data is tiny and the rules are simple, so roughly a thousand lines of well-tested code give us full control, no extra vendor in the GDPR setup and no per-connection costs. Everything sits behind our own hooks (`useEvents(range)`, `useList(id)`), so a sync service like PowerSync could replace it later without touching any screens. Also looked at: Zero (1.0 since mid-2026, but it needs its own always-running sync server) and TanStack DB (not stable yet). Both are worth re-checking later.
 
 ## 8. Accounts & pairing
 
 **Sign-in**
-- **6-digit email codes** everywhere (Supabase Auth OTP), not magic links. On an iPhone a link opens Safari, which doesn't share storage with the installed app, so the user would end up signed in in the wrong place.
-- **Apple and Google** are offered where they work reliably: desktop, Android and a regular Safari tab. Redirect-based sign-in inside an installed iOS web app has a history of breaking, so we test it on real devices before showing those buttons there. The native apps use the system sign-in sheets and pass the ID token to Supabase (`signInWithIdToken`). App Store rules require a privacy-friendly option next to Google sign-in, and Sign in with Apple covers that.
-- Production needs our own email sender (Supabase's built-in one only works for testing): an EU-based provider, branded templates, SPF / DKIM / DMARC from day one.
+- **Today:** every phone gets an anonymous account (Better Auth) when it starts or joins a space, kept in a 400-day httpOnly cookie, so nobody needs an email address to start. The catch: losing that cookie (a new phone, cleared website data) means losing access, so a way to add an email code or a passkey comes before launch.
+- **6-digit email codes** everywhere (Better Auth email OTP), not magic links. On an iPhone a link opens Safari, which doesn't share storage with the installed app, so the user would end up signed in in the wrong place.
+- **Apple and Google** are offered where they work reliably: desktop, Android and a regular Safari tab. Redirect-based sign-in inside an installed iOS web app has a history of breaking, so we test it on real devices before showing those buttons there. The native apps use the system sign-in sheets and pass the ID token to our API (Better Auth supports ID-token sign-in). App Store rules require a privacy-friendly option next to Google sign-in, and Sign in with Apple covers that.
+- Production needs an email sender: an EU-based provider, branded templates, SPF / DKIM / DMARC from day one.
 
 **Pairing**
 1. Everyone starts with their own space; solo mode is fully usable.
-2. "Invite your partner" creates a short code (like `K7P-3QX`), a link and a QR code, shareable through the share sheet. The invite is single use and expires after 7 days.
-3. The partner signs in and enters the code or opens the link, which adds them to the space. If they already have solo data, they can bring it along.
+2. "Invite your person" creates a 6-character code (shown as `K7P 2QX`) and a link (`couple.bojes.org/join/K7P2QX`), shared through the share sheet; a QR code comes later. The invite is single use and expires after 7 days.
+3. The partner enters the code or opens the link, which adds them to the space. Anything they already made on their own comes along.
 4. The code must be easy to type: on an iPhone the installed app can't receive links, so after installing, the partner types the code.
 
 **On iPhones, install first.** When someone opens the site in Safari, onboarding suggests "Add to Home Screen" before signing in, because the installed app has its own storage and push notifications only work there.
@@ -256,7 +260,7 @@ Goal: every screen renders from the device, every write is instant, the partner 
 | Milestone | "1,000 days together!" | Daily planner |
 
 **Pipeline**
-1. A **planner** (cron, about every 15 minutes, Edge Function) works out upcoming occurrences for the next few days, using the same `packages/core` recurrence code as the app, and writes them to `scheduled_notifications` without duplicates.
+1. A **planner** (Vercel Cron, about every 15 minutes) works out upcoming occurrences for the next few days, using the same `packages/core` recurrence code as the app, and writes them to `scheduled_notifications` without duplicates.
 2. A **dispatcher** (cron, every minute) sends everything that's due and marks it as sent.
 3. **Delivery:** Web Push now (VAPID, with Declarative Web Push payloads for Safari 18.4+), APNs / FCM once the native apps ship.
 
@@ -269,7 +273,8 @@ On iPhones, web push only works in the installed app (iOS 16.4+). We ask for per
 - Photos are resized on the device (long edge ~2560px, JPEG), plus a thumbnail (~480px) and a tiny blur placeholder (thumbhash) so the grid appears instantly.
 - Re-encoding strips the photo's metadata, including GPS location; we read the capture date first and keep it.
 - Uploads go through a queue stored on the device, so adding memories offline works.
-- Photos live in a private Supabase Storage bucket under `space_id/…`, readable only by the two members, and are shown through short-lived signed links. Thumbnails are cached on the device.
+- **Now:** photos stay on the phone that added them; the partner sees the memory with a calm placeholder.
+- **Next:** a private EU object store (Vercel Blob or an S3-compatible EU provider) under `space_id/…`, readable only by the two members and shown through short-lived signed links. Thumbnails are cached on the device.
 - The free plan gets a generous storage limit per space; more storage or full-resolution originals are premium candidates.
 
 ## 11. Native feel: the building blocks
@@ -328,22 +333,22 @@ interface Platform {
 
 ## 12. Privacy, security & GDPR
 
-- Data stays in the EU (Supabase Frankfurt), with data processing agreements for every processor (Supabase, Vercel, email provider, Sentry, analytics).
-- Row-level security on every table, deny by default. Automated tests cover partners' private events and other couples' data.
-- `security definer` database functions pin their `search_path` and check membership explicitly.
-- Realtime carries no content; photos are private and served through signed links.
+- Data stays in the EU (Neon and the API in Frankfurt), with data processing agreements for every processor (Neon, Vercel, email provider, Sentry, analytics).
+- Every API query is scoped to the caller's space. Automated tests cover partners' private events, who may change what, and other couples' data.
+- Requests that change something must come from the app's own address (CSRF protection on top of SameSite cookies and JSON-only bodies).
+- Photos will be private and served through signed links.
 - No ad trackers; cookieless analytics, so likely no cookie banner (to confirm).
 - Fonts are self-hosted (loading Google Fonts from Google's servers is a known GDPR problem in the EU).
 - In-app data export (JSON + photos) and account deletion, which GDPR requires and the App Store requires too.
 - Privacy policy, terms and an imprint (Impressum).
 - **Minimum age 14.** Note: in Germany the GDPR age for *consent* (Art. 8) is 16, not 14. So 14 works as long as nothing for under-16s relies on consent: the core app runs on the user agreement, and optional extras like analytics or marketing emails stay off for under-16s. Worth a short legal check before launch.
-- Strict Content Security Policy, rate limits on sign-in and invites, secrets only in CI / Vercel / Supabase, two-factor auth on every account, automated dependency updates.
+- Strict Content Security Policy, rate limits on sign-in and invites, secrets only in CI / Vercel, two-factor auth on every account, automated dependency updates.
 
 ## 13. Quality, CI & environments
 
 **Tests**
 - `packages/core`: unit tests plus property-based tests (fast-check) for recurrence, daylight-saving changes, time zones and countdowns.
-- Database: pgTAP tests for row-level security, invites and `sync_pull`.
+- API: tests against an embedded Postgres (PGlite) for permissions, invites, pairing and sync.
 - App: Playwright on iPhone and Pixel screen sizes with both WebKit and Chromium, including a two-partner test (two browser contexts) and an offline-editing test.
 - Real devices: every pull request gets a Vercel preview URL to install and try on a phone.
 
@@ -351,13 +356,13 @@ interface Platform {
 
 **Environments**
 
-| | Web | Supabase |
+| | Web | Database |
 |---|---|---|
-| Local | Vite dev server | Supabase CLI (Docker) |
-| Preview | Vercel preview per pull request | Staging project (EU) |
-| Production | Vercel with a custom domain | Production project (EU) |
+| Local | Vite dev server (`pnpm dev`) | Embedded Postgres (PGlite) through `pnpm dev:api` |
+| Preview | Vercel preview per pull request | A Neon branch per preview (to set up) |
+| Production | Vercel with a custom domain | Neon, Frankfurt |
 
-CI applies database migrations: to staging on merge, to production on release.
+Migrations run as part of every Vercel build, before the new version goes live.
 
 ## 14. Running costs (rough)
 
@@ -365,7 +370,7 @@ Prices are approximate and change over time.
 
 | Item | When | Cost |
 |---|---|---|
-| Supabase | Pro plan for production (free projects pause when inactive and have no backups); staging can stay on the free plan | ~$25 / month |
+| Neon | Free plan while testing; a paid plan before launch for longer history and backups (usage-based) | $0, later ~$5–20 / month |
 | Vercel | Hobby is for non-commercial use only, so Pro once this is a business (or Cloudflare Pages) | $0, later ~$20 / month |
 | Email sending | EU provider; free tiers cover the start | $0–15 / month |
 | Sentry, analytics | Free tiers at first | $0–20 / month |
@@ -383,12 +388,13 @@ Each phase ends with something usable on a real phone.
 - Clickable prototype with demo data that stays on the device: Today, Calendar (month + list), event detail, new-plan sheet, Lists, Memories (with real photos), Settings (language, light/dark)
 - Done when: it feels native on your iPhone / Android phone and you love the look
 
-**Phase 1: Foundation**
-- Supabase staging + production (EU), schema v1, row-level security with tests
-- Email-code sign-in, onboarding, solo mode, pairing (code / link / QR)
-- Local database, sync engine, offline outbox, realtime pokes
-- PWA: manifest, icons, splash screens, offline shell, update flow, iPhone install guide
-- Done when: two paired phones see each other's changes instantly, including after being offline
+**Phase 1: Foundation** (mostly built)
+- Built: Neon (Frankfurt) + the API on Vercel, schema and migrations, permission tests
+- Built: onboarding, solo mode, pairing with a code or link, demo mode
+- Built: the space on the phone, sync engine, offline outbox (polling for now)
+- Built: launch screens (iOS startup images, light + dark), skeletons, empty and error states; PWA basics from Phase 0
+- Next: email codes or passkeys so an account survives a new phone; pokes instead of polling
+- Done when: two paired phones see each other's changes within seconds, including after being offline (passes with two simulated phones; real phones next)
 
 **Phase 2: Calendar core**
 - Events: create / edit / delete, me / partner / us, shared / private, all-day, time zones
@@ -429,18 +435,19 @@ Each phase ends with something usable on a real phone.
 ## 17. Open questions
 
 - **Name:** is "meandu" the name people will see, or only the working title? (The domain is decided: couple.bojes.org.)
-- **Database:** the Supabase free plan on the connected account already has its 2 projects ("blobbase" and "lemon"). For meandu's Frankfurt database, either free a slot or move that Supabase organisation to Pro (~$25/month, needed at launch anyway).
+- **Account recovery:** accounts are anonymous for now. Email codes, passkeys, or both? Passkeys need the final domain to be live.
 - **Premium:** what's in it, and at what price? (Decide before Phase 5.)
 - **"Busy only" events:** v1 or later?
 
-Answered on 2026-10-22: languages (English + German), minimum age (14), unlinking (pause, see [§8](#8-accounts--pairing)).
+Answered on 2026-10-22: languages (English + German), minimum age (14), unlinking (pause, see [§8](#8-accounts--pairing)), database (Neon instead of Supabase).
 
 ## 18. References
 
 - Community Tauri push plugins: [tauri-plugin-mobile-push](https://github.com/yanqianglu/tauri-plugin-mobile-push), [tauri-plugin-notifications](https://github.com/Choochmeque/tauri-plugin-notifications)
 - [WebKit: Meet Declarative Web Push](https://webkit.org/?p=16535)
 - [React 19.2 and `<Activity>`](https://makerkit.dev/blog/tutorials/react-19-2)
-- [PowerSync + Supabase](https://docs.powersync.com/integrations/supabase)
+- [Neon docs](https://neon.com/docs), [Better Auth anonymous plugin](https://www.better-auth.com/docs/plugins/anonymous), [Drizzle ORM](https://orm.drizzle.team), [Hono](https://hono.dev)
+- [PowerSync](https://docs.powersync.com)
 - [Zero 1.0 (InfoQ)](https://infoq.com/news/2026/06/zero-version-1)
 - [TanStack DB](https://github.com/TanStack/db)
 - [OAuth in installed iOS web apps (Firebase issue)](https://github.com/firebase/firebase-js-sdk/issues/77)

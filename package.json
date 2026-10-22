@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @meandu/web dev",
+    "dev:api": "pnpm --filter @meandu/web dev:api",
     "build": "pnpm --filter @meandu/web build",
     "preview": "pnpm --filter @meandu/web preview",
     "check": "biome check .",

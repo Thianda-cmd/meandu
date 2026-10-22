@@ -53,6 +53,7 @@ export function JoinSheet({ code: initial = '' }: { code?: string }) {
           label={t.onboarding.codeTitle}
           shake={shake}
           autoFocus={!initial}
+          inSheet
         />
         <p role="alert" className="min-h-6 pt-3 text-center text-sub font-semibold text-coral-ink">
           {error && (t.onboarding.errors[error] ?? t.onboarding.errors.server)}

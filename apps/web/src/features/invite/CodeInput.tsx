@@ -1,5 +1,5 @@
 import { motion, useAnimate } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cx } from '../../lib/cx'
 import { extractCode } from './invite'
 
@@ -15,6 +15,7 @@ export function CodeInput({
   /** Bump to shake the tiles after a wrong code. */
   shake = 0,
   autoFocus,
+  inSheet = false,
 }: {
   value: string
   onChange: (value: string) => void
@@ -22,9 +23,19 @@ export function CodeInput({
   label: string
   shake?: number
   autoFocus?: boolean
+  /** On a white sheet the tiles are tinted instead of raised. */
+  inSheet?: boolean
 }) {
   const [focused, setFocused] = useState(false)
   const [scope, animate] = useAnimate<HTMLDivElement>()
+  const input = useRef<HTMLInputElement>(null)
+
+  // Not the autoFocus attribute: inside a sheet that's still sliding in, that would scroll
+  // the page to reach the field and push the sheet out of view.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only when it first appears
+  useEffect(() => {
+    if (autoFocus) input.current?.focus({ preventScroll: true })
+  }, [])
 
   useEffect(() => {
     if (shake) animate(scope.current, { x: [0, -12, 10, -6, 4, 0] }, { duration: 0.42 })
@@ -41,7 +52,8 @@ export function CodeInput({
             key={i}
             aria-hidden
             className={cx(
-              'grid h-16 w-12 place-items-center rounded-2xl bg-surface font-display text-[2rem] font-extrabold shadow-soft transition-shadow duration-200',
+              'grid h-16 w-12 place-items-center rounded-2xl font-display text-[2rem] font-extrabold transition-shadow duration-200',
+              inSheet ? 'bg-surface-2' : 'bg-surface shadow-soft',
               i === 3 && 'ml-3',
               current && 'ring-2 ring-coral',
             )}
@@ -57,6 +69,7 @@ export function CodeInput({
         )
       })}
       <input
+        ref={input}
         value={value}
         onChange={(e) => {
           const code = extractCode(e.target.value)
@@ -66,8 +79,6 @@ export function CodeInput({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         aria-label={label}
-        // biome-ignore lint/a11y/noAutofocus: the code is the only thing on this step
-        autoFocus={autoFocus}
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="characters"

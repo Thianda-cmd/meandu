@@ -225,6 +225,12 @@
     outline-offset: 2px;
   }
 
+  /* Text fields show the caret instead of a ring, like native ones. */
+  input:not([type="checkbox"], [type="radio"]):focus-visible,
+  textarea:focus-visible {
+    outline: none;
+  }
+
   ::selection {
     background: var(--coral-soft);
   }

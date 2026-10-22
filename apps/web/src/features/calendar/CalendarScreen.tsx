@@ -23,6 +23,7 @@ import { Segmented } from '../../ui/controls'
 import { STACK_SPRING } from '../../ui/motion'
 import { Pressable } from '../../ui/Pressable'
 import { Screen } from '../../ui/Screen'
+import { EmptyState } from '../../ui/states'
 import { EventRow, useOccurrences, weekdayInitials } from './shared'
 
 export function CalendarScreen() {
@@ -341,7 +342,7 @@ function DayList({ day, today }: { day: Temporal.PlainDate; today: Temporal.Plai
         </Pressable>
       </div>
       {occurrences.length === 0 ? (
-        <p className="px-3 py-6 text-center text-body text-ink-3">{t.calendar.empty}</p>
+        <EmptyState compact emoji="🌿" title={t.empty.day} />
       ) : (
         occurrences.map((o) => (
           <EventRow
@@ -377,6 +378,25 @@ function Agenda({ from, today }: { from: Temporal.PlainDate; today: Temporal.Pla
     }
     return groups
   }, [occurrences, from])
+
+  if (days.length === 0) {
+    return (
+      <EmptyState
+        emoji="🌤️"
+        title={t.empty.agenda}
+        action={
+          <Pressable
+            haptic="tap"
+            onPress={() => useUi.getState().openSheet({ type: 'event', date: from.toString() })}
+            className="flex items-center gap-2 rounded-full bg-coral px-5 py-2.5 text-headline font-semibold text-white shadow-soft"
+          >
+            <Plus size={18} weight="bold" />
+            {t.event.newTitle}
+          </Pressable>
+        }
+      />
+    )
+  }
 
   return (
     <div className="pb-4">

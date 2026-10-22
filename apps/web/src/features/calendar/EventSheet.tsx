@@ -315,7 +315,13 @@ export function EventSheet({
               <HourglassMedium size={20} weight="fill" className="text-honey" />
               {t.event.countdown}
             </Toggle>
-            <Toggle isSelected={draft.private} onChange={(v) => set('private', v)}>
+            <Toggle
+              isSelected={draft.private}
+              // Something hidden from your person can't be for both of you.
+              onChange={(v) =>
+                setDraft((d) => ({ ...d, private: v, who: v && d.who === BOTH ? me.id : d.who }))
+              }
+            >
               <LockSimple size={20} weight="fill" className="text-ink-2" />
               <span>
                 {t.event.private}

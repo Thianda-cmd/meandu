@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { useLocale, useT } from '../../i18n'
-import { formatDay } from '../../lib/format'
 import { todayDate } from '../../lib/time'
 import { haptics } from '../../platform'
 import { useData } from '../../state/data'
@@ -75,7 +74,6 @@ export function Onboarding() {
     try {
       await createSpace({ name: name.trim(), tone }, since)
       haptics.success()
-      useUi.getState().setJoinCode(null)
       // The app takes over now; the invite comes up once it's in place.
       window.setTimeout(() => useUi.getState().openSheet({ type: 'invite' }), 700)
     } catch (e) {
@@ -92,7 +90,6 @@ export function Onboarding() {
     try {
       await joinSpace(value, { name: name.trim(), tone })
       haptics.success()
-      useUi.getState().setJoinCode(null)
       useUi.getState().showToast(t.onboarding.joined)
       useUi.getState().celebrate()
     } catch (e) {
@@ -158,7 +155,7 @@ export function Onboarding() {
                   autoComplete="given-name"
                   autoCapitalize="words"
                   enterKeyHint="next"
-                  className="mt-6 w-full rounded-card bg-surface px-4 py-3.5 text-center font-display text-title font-extrabold shadow-soft"
+                  className="mt-6 w-full rounded-card bg-surface px-4 py-3.5 text-center font-display text-title font-extrabold shadow-soft transition-shadow focus:ring-2 focus:ring-coral/40"
                 />
                 <p className="mt-8 pb-3 text-sub font-semibold text-ink-2">
                   {t.onboarding.colorTitle}
@@ -361,7 +358,9 @@ function SincePicker({
       </span>
       <span className="relative mt-10 rounded-card bg-surface px-7 py-4 shadow-soft transition-transform duration-200 active:scale-[0.97]">
         <span className={date ? 'font-display text-title font-bold' : 'text-title text-ink-3'}>
-          {date ? formatDay(date, locale) : t.onboarding.pickDate}
+          {date
+            ? date.toLocaleString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+            : t.onboarding.pickDate}
         </span>
         <NativeDateInput
           label={t.onboarding.sinceTitle}

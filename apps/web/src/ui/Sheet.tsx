@@ -1,5 +1,11 @@
 import { X } from '@phosphor-icons/react'
-import { AnimatePresence, type DragControls, motion, useDragControls } from 'motion/react'
+import {
+  AnimatePresence,
+  type DragControls,
+  motion,
+  useDragControls,
+  useIsPresent,
+} from 'motion/react'
 import { createContext, type ReactNode, useContext, useEffect } from 'react'
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components'
 import { useT } from '../i18n'
@@ -56,6 +62,8 @@ export function Sheet({ open, onClose, label, children }: SheetProps) {
 
 function Panel({ label, onClose, children }: Omit<SheetProps, 'open'>) {
   const controls = useDragControls()
+  // Once it starts sliding away it takes no more taps or keys, so nothing is submitted twice.
+  const present = useIsPresent()
   return (
     <MotionModal
       className="absolute inset-x-0 bottom-0 mx-auto flex max-h-[calc(100dvh-var(--safe-top)-0.75rem)] w-full max-w-xl flex-col rounded-t-sheet bg-surface shadow-float outline-none"
@@ -73,7 +81,9 @@ function Panel({ label, onClose, children }: Omit<SheetProps, 'open'>) {
       }}
     >
       <Dialog aria-label={label} className="flex min-h-0 flex-1 flex-col outline-none">
-        <SheetDrag.Provider value={controls}>{children}</SheetDrag.Provider>
+        <div inert={!present} className="flex min-h-0 flex-1 flex-col">
+          <SheetDrag.Provider value={controls}>{children}</SheetDrag.Provider>
+        </div>
       </Dialog>
     </MotionModal>
   )

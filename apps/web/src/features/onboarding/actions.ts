@@ -14,6 +14,8 @@ export interface Profile {
 export async function createSpace(profile: Profile, togetherSince: string | null): Promise<void> {
   const userId = await ensureAccount()
   const state = await api.createSpace({ ...profile, togetherSince })
+  // Started their own space instead of using an invite link's code.
+  useUi.getState().setJoinCode(null)
   useData.getState().beginSynced(state, {
     people: [{ id: userId, ...profile }],
     togetherSince,
@@ -28,6 +30,8 @@ export async function joinSpace(code: string, profile: Profile): Promise<void> {
   if (alreadySynced) await syncNow()
   const userId = await ensureAccount()
   const state = await api.join({ code, ...profile })
+  // Used up. Cleared in the same tick as the switch below, so the app never sees it pending.
+  useUi.getState().setJoinCode(null)
   // A synced phone notices the move on its next sync and fetches the new space from scratch.
   if (!alreadySynced) {
     useData.getState().beginSynced(state, { people: [{ id: userId, ...profile }] })

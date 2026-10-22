@@ -24,10 +24,16 @@ beforeAll(async () => {
 class Device {
   private cookies = new Map<string, string>()
 
-  async request(path: string, body?: unknown, origin = ORIGIN) {
+  async request(
+    path: string,
+    body?: unknown,
+    origin = ORIGIN,
+    headers: Record<string, string> = {},
+  ) {
     const res = await app.request(`${ORIGIN}/api${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
+        ...headers,
         origin,
         'content-type': 'application/json',
         cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
@@ -80,6 +86,18 @@ describe('api', () => {
     await phone.signIn()
     const res = await phone.request('/space', { name: 'X', tone: 'coral' }, 'https://evil.example')
     expect(res.status).toBe(403)
+  })
+
+  it('accepts the public address a proxy forwards', async () => {
+    const phone = new Device()
+    await phone.signIn()
+    const res = await phone.request(
+      '/space',
+      { name: 'P', tone: 'coral' },
+      'https://couple.example',
+      { 'x-forwarded-host': 'couple.example' },
+    )
+    expect(res.status).toBe(200)
   })
 
   it('creates a space and syncs changes both ways', async () => {

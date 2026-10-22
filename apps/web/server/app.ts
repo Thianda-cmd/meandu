@@ -42,7 +42,10 @@ export function createApp({ db, auth }: { db: Db; auth: Auth }) {
   // SameSite cookies and the JSON-only body).
   const sameOrigin = createMiddleware<Env>(async (c, next) => {
     const origin = c.req.header('origin')
-    if (!origin || new URL(origin).host !== new URL(c.req.url).host) {
+    // Behind a proxy the address we're called on can differ from the public one. Pages on
+    // other sites can't set X-Forwarded-Host without a preflight, which this API never allows.
+    const hosts = [new URL(c.req.url).host, c.req.header('x-forwarded-host')]
+    if (!origin || !hosts.includes(new URL(origin).host)) {
       throw new AppError(403, 'origin')
     }
     await next()

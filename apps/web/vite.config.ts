@@ -77,7 +77,11 @@ export default defineConfig({
       },
     },
   },
-  // In development the API runs separately (pnpm dev:api) on an embedded Postgres.
-  server: { host: true, proxy: { '/api': 'http://localhost:8787' } },
-  preview: { proxy: { '/api': 'http://localhost:8787' } },
+  // In development the API runs separately (pnpm dev:api) on an embedded Postgres. The proxy
+  // keeps the original Host, which the API compares with the page's Origin.
+  server: {
+    host: true,
+    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: false } },
+  },
+  preview: { proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: false } } },
 })
